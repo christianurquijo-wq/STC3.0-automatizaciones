@@ -1,0 +1,8 @@
+google-genai>=2.19.0
+google-api-python-client>=2.199.0
+google-auth>=2.56.0
+gspread>=6.2.0
+pandas>=2.0.0
+streamlit>=1.35.0
+python-dotenv>=1.0.0
+pytest>=8.0.0

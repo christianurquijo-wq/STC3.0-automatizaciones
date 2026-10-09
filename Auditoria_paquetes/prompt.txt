@@ -1,0 +1,15 @@
+Por favor, audita los siguientes pantallazos del tablero del estudiante utilizando los diccionario de datos adjunto. 
+
+**Instrucciones de Auditoría Paso a Paso:**
+1. **Validación de Identidad y Curso:** Compara el nombre, el documento y el nombre del curso del diccionario con los mostrados en la imagen.
+2. **Validación de Parámetros Fijos:** 
+   - Confirma que las dos notas de los criterios de evaluación sean 50% y la nota final sea 100%.
+   - Confirma que la caja de tiempo indique exactamente "34h 0m" asincrónico y "6h" sincrónico.
+   - Cuenta las lecciones en el apartado central. Confirma que sean mínimo de 8. count lecciones >= 8.
+3. **Validación del Calendario (Fuerza Bruta):** Observa la caja "Control de asistencia". No asumas semanas ni filas. Ve número por número, del 1 al 31. Mira debajo de cada uno y anota si hay un punto naranja, si está vacío, o si está el ansiado punto VERDE (diferente).
+4. **Cálculo Lógico de Fecha de Finalización:**
+   - Si viste puntos verdes, identifica qué números de día los tienen (ej. 24, 25). Si hay varios, selecciona el número menor.
+   - Identifica la "Fecha asincrónica" en la parte inferior central o la "Finalización" en la parte izquierda.
+   - Determina la Fecha Base (la mayor entre la fecha asincrónica/finalización y la del punto verde menor).
+   - Evalúa la `fecha_finalizacion_diccionario`: ¿Es mayor o igual a la Fecha Base? ¿La diferencia es de 5 días o menos?
+5. **Veredicto:** Genera tu reporte indicando las discrepancias encontradas, si las hay.

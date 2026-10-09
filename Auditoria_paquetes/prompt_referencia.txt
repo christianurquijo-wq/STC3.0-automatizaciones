@@ -1,0 +1,24 @@
+Por favor, audita el siguiente pantallazo del tablero del estudiante utilizando el diccionario de datos adjunto. 
+
+
+**Diccionario de Datos:**
+{
+  "nombre_estudiante": "XXXX XXXXXXXX XXXXXXXXX XXXXXXXXXX",
+  "documento": "1024475266",
+  "curso": "Herramientas Ofimáticas",
+  "fecha_finalizacion_diccionario": "22 de Agosto del 2026"
+}
+
+**Instrucciones de Auditoría Paso a Paso:**
+1. **Validación de Identidad y Curso:** Compara el nombre, el documento y el nombre del curso del diccionario con los mostrados en la imagen.
+2. **Validación de Parámetros Fijos:** 
+   - Confirma que las dos notas de los criterios de evaluación sean 50% y la nota final sea 100%.
+   - Confirma que la caja de tiempo indique exactamente "34h 0m" asincrónico y "6h" sincrónico.
+   - Cuenta las lecciones en el apartado central. Confirma que sean exactamente 8.
+3. **Validación del Calendario:** Verifica que en el calendario haya un punto verde (Asistió) en la fecha indicada en el diccionario (`fecha_asistencia_esperada`).
+4. **Cálculo Lógico de Fecha de Finalización:**
+   - Identifica la fecha del punto verde.
+   - Identifica la "Fecha asincrónica" en la parte inferior central o la "Finalización" en la parte izquierda.
+   - Determina cuál de estas fechas es mayor.
+   - Evalúa la `fecha_finalizacion_diccionario`: ¿Es mayor o igual a la fecha del pantallazo? ¿La supera por 5 días o menos?
+5. **Veredicto:** Genera tu reporte indicando las discrepancias encontradas, si las hay.

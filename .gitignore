@@ -1,0 +1,25 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+*.json
+!.vscode/settings.json
+CONFIG_SEGURIDAD/
+*.pkl
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.csv
+*.xlsx
+temp_*
+.DS_Store
+Thumbs.db
+.streamlit/secrets.toml
+.streamlit/service_account.json
+
+# Streamlit
+.streamlit/secrets.toml
+secrets.toml
+*.toml.bak

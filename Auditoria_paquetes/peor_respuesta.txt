@@ -1,0 +1,5 @@
+{
+  "documento": "999999999999999",
+  "Estado": "CORREGIR",
+  "Observacion": "Documento no coincide|Nombre no coincide|Curso no coincide|Sin asistencia (sin punto verde)|Aparece reprobado o sin 100% de finalizacion|Tiempos no coinciden|No tiene las 8 lecciones|Fecha fuera de rango (menor o excede 5 dias)"
+}
