@@ -14,7 +14,15 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 DATASET_ID = "EFE_2026"
 TABLE_ID   = "STC_3_0_V2_2026"
 
-Credentials_File = "credenciales.json"
+# oct-2026: busca credenciales.json junto al script o en la raíz del repo, sin
+# depender de la carpeta desde donde se ejecute (local, trigger o GitHub Actions).
+_BASE = os.path.dirname(os.path.abspath(__file__))
+Credentials_File = next(
+    (p for p in (os.path.join(_BASE, "credenciales.json"),
+                 os.path.join(os.path.dirname(_BASE), "credenciales.json"))
+     if os.path.exists(p)),
+    "credenciales.json",
+)
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",

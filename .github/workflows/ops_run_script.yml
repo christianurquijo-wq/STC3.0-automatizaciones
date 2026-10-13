@@ -1,0 +1,92 @@
+# Panel de Operaciones Kuepa -- ejecuta UN script del repo y lo registra.
+# Lo dispara el panel (Streamlit) vía API, o se corre a mano desde la pestaña
+# Actions de GitHub. Es el mismo archivo en todos los repos de automatizaciones.
+name: OPS · Ejecutar script
+run-name: "${{ inputs.script }} · ${{ inputs.origen }} · ${{ inputs.request_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Ruta del script relativa a la raíz (ej. Upload_JAE_2026.py o Certificados_paquetes/paquetes.py)"
+        required: true
+        type: string
+      cwd:
+        description: "Directorio de trabajo"
+        type: choice
+        options: [script, root]
+        default: script
+      timeout_min:
+        description: "Minutos máximos"
+        type: string
+        default: "60"
+      origen:
+        description: "No modificar (lo llena el panel)"
+        type: string
+        default: manual_github
+      actor:
+        description: "No modificar (lo llena el panel)"
+        type: string
+        default: ""
+      request_id:
+        description: "No modificar (lo llena el panel)"
+        type: string
+        default: ""
+
+# Evita dos ejecuciones simultáneas del mismo script (ej. doble clic en el panel).
+concurrency:
+  group: ops-${{ inputs.script }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ejecutar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install google-auth requests
+          if grep -qi '^playwright' requirements.txt 2>/dev/null; then python -m playwright install --with-deps chromium; fi
+
+      # Todos los archivos secretos del repo (.env, credenciales.json,
+      # CONFIG_SEGURIDAD/...) viajan en UN solo secret: un .zip en base64.
+      # Se genera con empaquetar_secretos.ps1 desde tu PC.
+      - name: Restaurar archivos secretos
+        env:
+          SECRETS_BUNDLE: ${{ secrets.SECRETS_BUNDLE }}
+        run: |
+          if [ -n "$SECRETS_BUNDLE" ]; then
+            echo "$SECRETS_BUNDLE" | base64 -d > "$RUNNER_TEMP/s.zip"
+            unzip -oq "$RUNNER_TEMP/s.zip" -d .
+            rm -f "$RUNNER_TEMP/s.zip"
+          else
+            echo "::warning::SECRETS_BUNDLE no configurado"
+          fi
+
+      - name: Ejecutar con bitácora
+        env:
+          # Los inputs pasan por variables de entorno (no se interpolan en el
+          # shell) para evitar inyección de comandos.
+          OPS_SCRIPT: ${{ inputs.script }}
+          OPS_CWD: ${{ inputs.cwd }}
+          OPS_TIMEOUT: ${{ inputs.timeout_min }}
+          OPS_ORIGEN: ${{ inputs.origen }}
+          OPS_ACTOR: ${{ inputs.actor }}
+          OPS_REQUEST_ID: ${{ inputs.request_id }}
+          OPS_SHEET_ID: ${{ secrets.OPS_SHEET_ID }}
+          OPS_LOG_SA_JSON: ${{ secrets.OPS_LOG_SA_JSON }}
+          OPS_ALERT_WEBHOOK: ${{ secrets.OPS_ALERT_WEBHOOK }}
+          OPS_ALERT_TOKEN: ${{ secrets.OPS_ALERT_TOKEN }}
+        run: python ops_logger.py --script "$OPS_SCRIPT" --cwd "$OPS_CWD" --timeout "$OPS_TIMEOUT"
