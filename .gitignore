@@ -1,12 +1,29 @@
+# ============================================================
+# Repo STC (STC3.0-automatizaciones) - incluye el Dashboard
+# de Streamlit (antes repo STC_3.0) desde oct-2026
+# ============================================================
+
+# Entornos (viven en C:\venvs\stc, fuera del repo)
 .venv/
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.devcontainer/*.json
+
+# Secretos: NUNCA al repo (en Actions llegan por SECRETS_BUNDLE; en Streamlit Cloud, por Secrets)
 .env
+python_agente/.env
 *.json
 !.vscode/settings.json
 CONFIG_SEGURIDAD/
+.streamlit/secrets.toml
+secrets.toml
+*.toml.bak
 *.pkl
+python_agente.zip
+
+# Datos personales y salidas
 *.pdf
 *.png
 *.jpg
@@ -14,12 +31,16 @@ CONFIG_SEGURIDAD/
 *.csv
 *.xlsx
 temp_*
+Dashboard/columnas_debug.txt
+Dashboard/debug_entregas.txt
+
+# Excepcion: logos que usa el Dashboard (st.image("assets/..."))
+!assets/*.png
+
+# Sistema
 .DS_Store
 Thumbs.db
-.streamlit/secrets.toml
-.streamlit/service_account.json
 
-# Streamlit
-.streamlit/secrets.toml
-secrets.toml
-*.toml.bak
+# Repo aparte (pendiente de archivar)
+STC3.0-bot/
+.vscode/
