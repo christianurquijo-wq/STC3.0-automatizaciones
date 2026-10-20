@@ -17,7 +17,12 @@ def _get_client():
         except Exception:
             with open(".streamlit/service_account.json") as f:
                 info = json.load(f)
-        creds = service_account.Credentials.from_service_account_info(info)
+        # oct-2026: + scope de Drive (solo lectura) por si alguna tabla es externa sobre Google Sheets
+        creds = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform",
+                    "https://www.googleapis.com/auth/drive.readonly"],
+        )
         _client = bigquery.Client(credentials=creds, project=info["project_id"])
     return _client
 
