@@ -154,7 +154,13 @@ import datetime
 
 def cargar_metas() -> pd.DataFrame:
     from bigquery_api import cargar_metas_bigquery
-    df = cargar_metas_bigquery()
+    # oct-2026: si la tabla de metas falla, mostrar el motivo real (Streamlit Cloud oculta
+    # el mensaje de las excepciones) y seguir con metas en 0 en vez de tumbar la pestana.
+    try:
+        df = cargar_metas_bigquery()
+    except Exception as e:
+        st.warning(f"No se pudieron cargar las metas (METAS_STC_3): {type(e).__name__}: {e}")
+        return pd.DataFrame({"Mes": [], "Básico": [], "Especializado": [], "Total": []})
     for col in ["Básico", "Especializado", "Total"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
