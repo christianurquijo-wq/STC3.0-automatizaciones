@@ -63,23 +63,8 @@ WEBHOOKS_REGISTRADOS = [
         "confirmar": True,
         "mensaje_confirmacion": "¿Confirmas disparar el flujo de Reporte CRM?",
     },
-    {
-        "id": "stc_update",
-        "etiqueta": "🔄 Actualizar STC",
-        "repo": "SGC140/Control_periodizacion_unificacion_DATA",
-        "workflow_file": "stc_update.yaml",
-        "token_env": "GITHUB_TOKEN2",
-        "confirmar": True,
-        "mensaje_confirmacion": "¿Confirmas ejecutar la actualización de STC?",
-    },
 ]
-GITHUB_ACTIONS_REGISTRADOS = [
-    {
-        "id": "pantallazos_paquetes",
-        "etiqueta": "🖼️ Linkear pantallazos y crear paquetes",
-        "repo": "SGC140/STC_3_0_EFE",
-        "workflow_file": "pantallazos_paquetes.yaml",
-        "confirmar": True,
-        "mensaje_confirmacion": "¿Confirmas ejecutar el proceso de vinculación de pantallazos y creación de paquetes?",
-    },
-]
+# oct-2026: se retiraron los botones "Actualizar STC" y "Linkear pantallazos y crear
+# paquetes". Disparaban workflows en repos de SGC140 (Sebastián) con sus tokens
+# (GITHUB_TOKEN / GITHUB_TOKEN2). La lista vacía hace que app.py no pinte botones.
+GITHUB_ACTIONS_REGISTRADOS = []
