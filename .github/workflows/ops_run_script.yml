@@ -49,23 +49,23 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-         with:
-           python-version: "3.12"
-           cache: pip
-           cache-dependency-path: "**/requirements*.txt"
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "**/requirements*.txt"
 
       - name: Instalar dependencias
-           env:
-             OPS_SCRIPT: ${{ inputs.script }}
-           run: |
-             python -m pip install --upgrade pip
-             # Si la carpeta del script tiene su propio requirements.txt, se usa ese (más liviano)
-             dir="$(dirname "$OPS_SCRIPT")"
-             if [ "$dir" != "." ] && [ -f "$dir/requirements.txt" ]; then req="$dir/requirements.txt"; else req="requirements.txt"; fi
-             echo "Dependencias desde: $req"
-             if [ -f "$req" ]; then pip install -r "$req"; fi
-             pip install google-auth requests
-             if grep -qi '^playwright' "$req" 2>/dev/null; then python -m playwright install --with-deps chromium; fi
+        env:
+          OPS_SCRIPT: ${{ inputs.script }}
+        run: |
+          python -m pip install --upgrade pip
+          # Si la carpeta del script tiene su propio requirements.txt, se usa ese (más liviano)
+          dir="$(dirname "$OPS_SCRIPT")"
+          if [ "$dir" != "." ] && [ -f "$dir/requirements.txt" ]; then req="$dir/requirements.txt"; else req="requirements.txt"; fi
+          echo "Dependencias desde: $req"
+          if [ -f "$req" ]; then pip install -r "$req"; fi
+          pip install google-auth requests
+          if grep -qi '^playwright' "$req" 2>/dev/null; then python -m playwright install --with-deps chromium; fi
 
       # Todos los archivos secretos del repo (.env, credenciales.json,
       # CONFIG_SEGURIDAD/...) viajan en UN solo secret: un .zip en base64.
