@@ -66,10 +66,10 @@ nombre_temporal = "referencia_temporal.png"
 referencia_tokens.GetContentFile(nombre_temporal)
 referencia_tokens = nombre_temporal
 
-with open("AUDITORIA_PAQIETES/system_instructions.txt", "r", encoding="utf-8") as instructions:
+with open(os.path.join(ruta_base, "system_instructions.txt"), "r", encoding="utf-8") as instructions:
     system_instructions = instructions.read()
 
-with open("AUDITORIA_PAQIETES/prompt_referencia.txt", "r", encoding="utf-8") as prompt_r:
+with open(os.path.join(ruta_base, "prompt_referencia.txt"), "r", encoding="utf-8") as prompt_r:
     prompt_referencia = prompt_r.read()
 
 try:
@@ -84,7 +84,7 @@ tokens_archivo = agente.models.count_tokens(
     contents= [system_instructions, referencia_file, prompt_referencia]
     )
 
-with open("AUDITORIA_PAQIETES/peor_respuesta.txt", "r", encoding="utf-8") as respuesta:
+with open(os.path.join(ruta_base, "peor_respuesta.txt"), "r", encoding="utf-8") as respuesta:
     peor_respuesta = respuesta.read()
 
 tokens_maximos_salida = agente.models.count_tokens(
@@ -107,7 +107,7 @@ tamano_lote_teorico = min(max_input, max_output)
 margen_alucinacion = 15
 tamano_lote = tamano_lote_teorico - margen_alucinacion
 
-with open("AUDITORIA_PAQIETES/prompt.txt", "r", encoding="utf-8") as content:
+with open(os.path.join(ruta_base, "prompt.txt"), "r", encoding="utf-8") as content:
     prompt = content.read()
 
 scope = ["https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive"]

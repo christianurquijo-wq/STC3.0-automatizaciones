@@ -44,3 +44,5 @@ Thumbs.db
 # Repo aparte (pendiente de archivar)
 STC3.0-bot/
 .vscode/
+# Registro y respaldos del túnel de PDF (Evidencias_remisiones/tunel_pdf.py)
+logs/

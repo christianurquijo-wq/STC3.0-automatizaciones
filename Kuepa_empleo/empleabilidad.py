@@ -28,10 +28,26 @@ Credenciales = ServiceAccountCredentials.from_json_keyfile_name(json_plexus, sco
 client = gspread.authorize(Credenciales) 
 load_dotenv(find_dotenv(), override=True)
 
+def _clave_pestana(texto):
+    texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]", "", texto)
+
+
+def pestana(libro, nombre):
+    """Busca la pestaña sin importar mayúsculas, tildes, espacios o guiones
+    ('REPORTE KUEPA_EMPLEO' == 'Reporte Kuepa Empleo'). Si no está, dice cuáles hay."""
+    hojas = libro.worksheets()
+    for ws in hojas:
+        if _clave_pestana(ws.title) == _clave_pestana(nombre):
+            return ws
+    raise SystemExit(f"No encuentro la pestaña '{nombre}' en '{libro.title}'. "
+                     f"Pestañas disponibles: {[ws.title for ws in hojas]}")
+
+
 # 2. Descarga de datos
 hoja = client.open_by_key(os.getenv("CONSOLIDADO"))
-entrega_1 = hoja.worksheet("ENTREGA 1").get_all_values()
-empleo = hoja.worksheet("REPORTE KUEPA_EMPLEO").get_all_values()
+entrega_1 = pestana(hoja, "ENTREGA 1").get_all_values()
+empleo = pestana(hoja, "REPORTE KUEPA_EMPLEO").get_all_values()
 
 def limpiar_celdas_dataframe(df):
     columnas_texto = df.select_dtypes(include=['object', 'string']).columns
@@ -154,7 +170,7 @@ df_reporte = pd.DataFrame(discrepancias)
 
 nombre_hojaq = os.getenv('DISCREPANCIAS')
 nombre_hoja = client.open_by_key(nombre_hojaq)
-data = nombre_hoja.worksheet("REPORTE EMPLEABILIDAD")
+data = pestana(nombre_hoja, "REPORTE EMPLEABILIDAD")
 _ = data.clear()
 
 if not df_reporte.empty:

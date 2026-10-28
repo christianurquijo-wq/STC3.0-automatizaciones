@@ -1,10 +1,12 @@
 import os
+import sys
 import time
 import re
 import gspread
+from dotenv import load_dotenv
 from PIL import Image
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+from pydrive2.auth import GoogleAuth   # pydrive (sin 2) ya no se mantiene; mismo API
+from pydrive2.drive import GoogleDrive
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -15,27 +17,26 @@ from selenium.webdriver.support import expected_conditions as EC
 # Obtener la carpeta donde está guardado este script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Rutas de archivos de credenciales de Google
-CLIENT_SECRETS_PATH = os.path.join(BASE_DIR, "client_secrets.json")
-CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
+load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
+EN_SERVIDOR = bool(os.getenv("CI"))  # GitHub Actions define CI=true
+
+# Rutas de archivos de credenciales de Google (bóveda del repo; en Actions llegan por SECRETS_BUNDLE)
+BOVEDA = os.path.join(BASE_DIR, "CONFIG_SEGURIDAD")
+CLIENT_SECRETS_PATH = os.path.join(BOVEDA, "client_secrets.json")
+CREDENTIALS_PATH = os.path.join(BOVEDA, "credentials_module.json")
 
 # URLs y Parametros de la prueba
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1J0u5EiA-82N1LTKT-Qt8qdJYI_sbc_hhjH33AWxCvZo/edit?gid=0#gid=0"
 SIS_URL = "https://sis.kuepa.com/students"
 DRIVE_FOLDER_ID = "1Ai3toqr5bk5y6QXlXgsXID6yoISHbFCu"
-USER = "Coordinador.sdde3@kuepa.com"
-PASSWORD = "Efe_2026*"
+# Usuario y clave del SIS: SOLO en el .env (SIS_USUARIO / SIS_CLAVE), nunca en el código.
+USER = os.getenv("SIS_USUARIO", "")
+PASSWORD = os.getenv("SIS_CLAVE", "")
+if not USER or not PASSWORD:
+    sys.exit("Faltan SIS_USUARIO y/o SIS_CLAVE en el .env de STC.")
 ALIANZA = "Socios Talento Capital SDDE 3.0"
 # CHROMEDRIVER_PATH = "C:/ruta/a/chromedriver.exe"  # <- Ajusta tu ruta local a chromedriver.exe
 TEMP_FOLDER = os.path.join(BASE_DIR, "pantallazos_temp")
-
-options = webdriver.ChromeOptions()
-options.add_argument("--start-maximized")
-options.add_argument("--disable-notifications")
-
-# Reemplaza la creación del driver por esta línea simple:
-driver = webdriver.Chrome(options=options)
-wait = WebDriverWait(driver, 30)
 
 # Crear carpeta temporal si no existe
 os.makedirs(TEMP_FOLDER, exist_ok=True)
@@ -49,7 +50,9 @@ gauth.LoadClientConfigFile(CLIENT_SECRETS_PATH)
 gauth.LoadCredentialsFile(CREDENTIALS_PATH)
 
 if gauth.credentials is None:
-    gauth.LocalWebserverAuth()  # Abre el navegador la primera vez
+    if EN_SERVIDOR:
+        sys.exit("Falta CONFIG_SEGURIDAD/credentials_module.json (token de Drive) en el SECRETS_BUNDLE.")
+    gauth.LocalWebserverAuth()  # Abre el navegador la primera vez (solo en tu PC)
 elif gauth.access_token_expired:
     gauth.Refresh()
 else:
@@ -83,9 +86,14 @@ print(f"🎯 Participantes a procesar: {len(participantes)}")
 options = webdriver.ChromeOptions()
 options.add_argument("--start-maximized")
 options.add_argument("--disable-notifications")
+if EN_SERVIDOR or os.getenv("HEADLESS"):
+    # Sin pantalla (GitHub Actions): ventana fija para que los pantallazos salgan completos
+    for arg in ("--headless=new", "--window-size=1920,1080", "--no-sandbox", "--disable-dev-shm-usage"):
+        options.add_argument(arg)
 driver = webdriver.Chrome(options=options)
 wait = WebDriverWait(driver, 30)
 
+subidos, fallidos = 0, []
 try:
     print("🌐 Iniciando sesión en SIS Kuepa...")
     driver.get(SIS_URL)
@@ -198,9 +206,11 @@ try:
                 os.remove(pdf_path)
             
             print(f"   ✓ Subido a Drive correctamente.")
+            subidos += 1
             
         except Exception as e:
             print(f"   ✗ Error en el proceso de {part['nombre']}: {str(e)}")
+            fallidos.append(part['cedula'])
             
         finally:
             # Cerrar las pestañas secundarias generadas y mantener la sesión
@@ -212,4 +222,11 @@ try:
 
 finally:
     driver.quit()
-    print("\n✅ Proceso finalizado por completo. Revisa tu carpeta en Google Drive.")
+
+print(f"\nResumen: {subidos} subidos, {len(fallidos)} con error.")
+if fallidos:
+    print("Cédulas con error: " + ", ".join(fallidos))
+if participantes and subidos == 0:
+    # Nada salió: casi siempre es login del SIS o cambio en la página. Se marca como fallo en el panel.
+    sys.exit("Ningún participante se pudo procesar. Revisa SIS_USUARIO/SIS_CLAVE o si cambió la página del SIS.")
+print("✅ Proceso finalizado. Revisa tu carpeta en Google Drive.")
