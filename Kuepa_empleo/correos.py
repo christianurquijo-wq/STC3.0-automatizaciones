@@ -9,6 +9,32 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pdfkit
 import requests
 import base64
+import argparse
+import datetime
+
+# --- PARÁMETROS DE EJECUCIÓN ---
+#   python correos.py                         -> fecha de hoy, todos los pendientes
+#   python correos.py --limite 1              -> solo 1 registro (prueba)
+#   python correos.py --fecha "Lunes, 14 de Septiembre de 2026"
+#   python correos.py --simular               -> solo cuenta pendientes, no crea nada
+_DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+_MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
+          "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+
+def _fecha_hoy():
+    hoy = datetime.date.today()
+    return f"{_DIAS[hoy.weekday()]}, {hoy.day} de {_MESES[hoy.month - 1]} de {hoy.year}"
+
+
+_parser = argparse.ArgumentParser(description="Genera el PDF del correo 'Ruta de Empleo' por participante y lo sube a Drive.")
+_parser.add_argument("--fecha", default=_fecha_hoy(), help="Fecha que aparece en el correo (por defecto, hoy)")
+_parser.add_argument("--limite", type=int, default=0, help="Máximo de registros a procesar (0 = todos)")
+_parser.add_argument("--simular", action="store_true", help="Solo muestra cuántos pendientes hay")
+_parser.add_argument("--documentos", default="",
+                     help="Cédulas separadas por coma: se generan aunque ya tengan 'Link Correo' (lo reemplaza)")
+_parser.add_argument("--sheet", default="", help="ID de otro Google Sheet (pestaña 'Hoja 1'); por defecto, el de siempre")
+ARGS = _parser.parse_args()
 
 load_dotenv(find_dotenv(), override=True)
 
@@ -58,7 +84,8 @@ client = gspread.authorize(Credenciales)
 
 remitente = "sociostalentocapital3.0@kuepa.edu.co"
 folder = "1eEa6dbqdzeg-gf_xDdk3Ef2MXyyd15Cs"
-db = "1-mkew1k_3HJXRxMN7LYuHVIouxTbQny7vtLnUNGLVEU"
+db = ARGS.sheet or "1-mkew1k_3HJXRxMN7LYuHVIouxTbQny7vtLnUNGLVEU"
+FORZAR = {d.strip() for d in ARGS.documentos.split(",") if d.strip()}
 
 documento_sheet = client.open_by_key(db)
 hoja_ws = documento_sheet.worksheet("Hoja 1")
@@ -90,7 +117,21 @@ img_mano = url_a_base64("https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/7
 img_chulo = url_a_base64("https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/2705.png")
 # --------------------------------------
 
-print(f"Iniciando procesamiento de {len(df)} registros...")
+pendientes = df[((df["Link Correo"].astype(str).str.strip() == "")
+                 | df.get("Id de documento", pd.Series("", index=df.index)).astype(str).str.strip().isin(FORZAR))
+                & (df.get("Id de documento", pd.Series("", index=df.index)).astype(str).str.strip() != "")
+                & (df.get("Email*", pd.Series("", index=df.index)).astype(str).str.strip() != "")]
+print(f"Registros en la hoja: {len(df)} · por generar: {len(pendientes)}"
+      + (f" (incluye {len(FORZAR)} cédula(s) forzadas)" if FORZAR else ""))
+if FORZAR:
+    no_estan = FORZAR - set(df.get("Id de documento", pd.Series(dtype=str)).astype(str).str.strip())
+    if no_estan:
+        print(f"⚠ Estas cédulas no están en la hoja: {', '.join(sorted(no_estan))}")
+print(f"Fecha en el correo: {ARGS.fecha}" + (f" · límite: {ARGS.limite}" if ARGS.limite else ""))
+if ARGS.simular:
+    print("Simulación: no se creó ningún PDF.")
+    raise SystemExit(0)
+procesados = 0
 
 opciones_pdf = {
     "encoding": "UTF-8",
@@ -110,16 +151,20 @@ for indice, fila in df.iterrows():
     correo = fila.get("Email*", "")
     link = fila.get("Link Correo", "")
 
-    if str(link).strip() != "":
+    if str(link).strip() != "" and str(fila.get("Id de documento", "")).strip() not in FORZAR:
         continue
 
     if not documento or not correo:
         continue
+
+    if ARGS.limite and procesados >= ARGS.limite:
+        break
+    procesados += 1
         
     temp_html = f"temp_{documento}.html"
     temp_pdf = f"temp_{documento}.pdf"
 
-    fecha_actual = "Viernes, 10 de Julio de 2026"
+    fecha_actual = ARGS.fecha
 
     html_content = f"""
     <!DOCTYPE html>
@@ -237,4 +282,4 @@ for indice, fila in df.iterrows():
         except Exception as e:
             print(f"  -> ❌ Error al escribir en Sheets: {e}")
 
-print("\n¡Proceso finalizado!")
+print(f"\n¡Proceso finalizado! Procesados: {procesados}")
