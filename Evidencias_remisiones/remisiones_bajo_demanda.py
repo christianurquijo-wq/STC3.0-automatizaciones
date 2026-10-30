@@ -62,19 +62,32 @@ def ultima_ejecucion() -> int:
     return int(datos[0]["id"]) if datos else 0
 
 
+def _cabeceras() -> list[dict]:
+    """Cabeceras a probar, en orden. El webhook usa la credencial «OPS X-OPS-TOKEN» (la del Panel):
+    1) la configurada en STC/.env; 2) X-OPS-TOKEN con OPS_ALERT_TOKEN, el token que el runner ya
+    recibe para las alertas (mismo valor que n8n_token del dashboard)."""
+    nombre, valor = t._env("WEBHOOK_REMISIONES_HEADER_NOMBRE"), t._env("WEBHOOK_REMISIONES_HEADER_VALOR")
+    opciones = [{nombre: valor}] if nombre and valor else []
+    if os.getenv("OPS_ALERT_TOKEN"):
+        opciones.append({"X-OPS-TOKEN": os.environ["OPS_ALERT_TOKEN"]})
+    return opciones or [{}]
+
+
 def disparar_webhook() -> None:
     url = t._env("WEBHOOK_REMISIONES_URL")
-    nombre, valor = t._env("WEBHOOK_REMISIONES_HEADER_NOMBRE"), t._env("WEBHOOK_REMISIONES_HEADER_VALOR")
     if not url:
         raise RuntimeError("Falta la URL del webhook (WEBHOOK_REMISIONES_URL en STC/.env).")
-    try:
-        r = requests.post(url, headers={nombre: valor} if nombre else {},
-                          json={"origen": "remisiones_bajo_demanda", "request_id": os.getenv("OPS_REQUEST_ID", "")},
-                          timeout=30)
-        if r.status_code >= 400:
-            raise RuntimeError(f"n8n {r.status_code}: {r.text[:300]}")
-    except requests.ReadTimeout:
-        pass  # el webhook puede responder al final del flujo: la ejecución sigue en n8n
+    cuerpo = {"origen": "remisiones_bajo_demanda", "request_id": os.getenv("OPS_REQUEST_ID", "")}
+    r = None
+    for cab in _cabeceras():
+        try:
+            r = requests.post(url, headers=cab, json=cuerpo, timeout=30)
+        except requests.ReadTimeout:
+            break  # el webhook puede responder al final del flujo: la ejecución sigue en n8n
+        if r.status_code not in (401, 403):
+            break  # con 401/403 se prueba la siguiente cabecera
+    if r is not None and r.status_code >= 400:
+        raise RuntimeError(f"n8n {r.status_code}: {r.text[:300]}")
     t.log("Flujo de Remisiones disparado en n8n.")
 
 
