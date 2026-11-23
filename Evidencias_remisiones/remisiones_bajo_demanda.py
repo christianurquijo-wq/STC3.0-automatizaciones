@@ -118,7 +118,23 @@ def error_de(eid: str, estado: str) -> str:
     err = res.get("error") or {}
     nodo = err.get("node", {}).get("name") if isinstance(err.get("node"), dict) else err.get("node")
     msg = err.get("message") or err.get("description") or f"n8n status: {estado}"
-    return (f"Nodo «{nodo}»: " if nodo else "") + str(msg)[:800]
+    # nov-2026: n8n a veces deja el error general sin nodo (p. ej. solo «aborted»). Se buscan los nodos que
+    # fallaron en runData y el último nodo ejecutado, para que la alerta diga dónde se rompió.
+    fallidos = []
+    for nombre, corridas in (res.get("runData") or {}).items():
+        for c in corridas or []:
+            e = c.get("error") if isinstance(c, dict) else None
+            if e:
+                detalle = e.get("description") or e.get("message") or ""
+                codigo = e.get("httpCode") or (e.get("context") or {}).get("httpCode") or ""
+                fallidos.append(f"«{nombre}»" + (f" HTTP {codigo}" if codigo else "") + f": {str(detalle)[:200]}")
+    ultimo = res.get("lastNodeExecuted")
+    texto = (f"Nodo «{nodo}»: " if nodo else "") + str(msg)
+    if fallidos:
+        texto += " · Nodos con error: " + " | ".join(fallidos[:3])
+    elif ultimo and not nodo:
+        texto += f" · Último nodo ejecutado: «{ultimo}»"
+    return texto[:800]
 
 
 def main() -> None:
