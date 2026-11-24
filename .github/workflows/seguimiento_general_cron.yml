@@ -1,12 +1,15 @@
-# Seguimiento General STC 3.0 · reconstrucción automática cada 2 horas.
+# Seguimiento General STC 3.0 · reconstrucción automática de lunes a viernes a las 6, 8 y 10 a. m., 12 m. y 2, 4 y
+# 6 p. m. (hora de Colombia).
 # Corre el mismo script que el botón del Panel (Seguimiento_general/reconstruir_seguimiento_real.py) con la
 # bitácora de ops_logger.py, así cada ejecución queda en LOG_EJECUCIONES y, si falla, llega la alerta por correo.
 # Comparte el grupo de concurrencia con ops_run_script.yml: si el Panel y el cron coinciden, uno espera al otro.
-name: STC · Seguimiento General (cada 2 h)
+name: STC · Seguimiento General (L-V 6 a. m.–6 p. m.)
 
 on:
   schedule:
-    - cron: "17 */2 * * *"   # minuto 17 de cada 2 horas (UTC). GitHub puede retrasarlo unos minutos.
+    # GitHub usa hora UTC (Colombia = UTC-5): 11,13,…,23 UTC = 6 a. m., 8 a. m., …, 6 p. m. en Colombia.
+    # Minuto 5 y no 0: en punto GitHub tiene más cola y suele retrasar más los programados.
+    - cron: "5 11,13,15,17,19,21,23 * * 1-5"
   workflow_dispatch: {}
 
 concurrency:
