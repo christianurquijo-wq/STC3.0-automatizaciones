@@ -153,9 +153,10 @@ except Exception as e:
         st.cache_data.clear()
         st.rerun()
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🔍 Consulta por CC", "📄 Compilador FCS", "⏰ Alertas por tiempos", "📊 Overview",
     "🌐 Dashboard Proyecto", "📋 Evidencias SDDE", "🔎 Auditoría de calidad", "🎯 Seguimiento individual",
+    "📆 Gestión diaria",
 ])
 
 # =========================================================
@@ -315,143 +316,150 @@ with tab2:
 # TAB 3: Análisis de datos
 # =========================================================
 with tab3:
-    from analitica import cargar_todo_cache, generar_resumen, campos_vacios_fcs
+    sub_tiempos, sub_inconsistencias = st.tabs(["⏱️ Tiempos de gestión", "🧩 Inconsistencias de datos"])
+    with sub_tiempos:
+        from vistas_gestion import render_tiempos
+        with carga_personalizada("Calculando tiempos de gestión..."):
+            _general_tiempos = cargar_general()
+        render_tiempos(_general_tiempos)
+    with sub_inconsistencias:
+        from analitica import cargar_todo_cache, generar_resumen, campos_vacios_fcs
 
-    with carga_personalizada("Cargando análisis de datos..."):
-        f_tab3 = cargar_todo_cache()
+        with carga_personalizada("Cargando análisis de datos..."):
+            f_tab3 = cargar_todo_cache()
 
-    with carga_personalizada("Calculando análisis..."):
-        resumen = generar_resumen(f_tab3)
-        vacios = campos_vacios_fcs(f_tab3["orientacion_consolidado"])
+        with carga_personalizada("Calculando análisis..."):
+            resumen = generar_resumen(f_tab3)
+            vacios = campos_vacios_fcs(f_tab3["orientacion_consolidado"])
 
-    from cargar_datos import cargar_fuente as _cargar_fuente_sub
+        from cargar_datos import cargar_fuente as _cargar_fuente_sub
 
-    with carga_personalizada("Cargando subsanaciones..."):
-        subsanaciones, _ = _cargar_fuente_sub("subsanaciones")
+        with carga_personalizada("Cargando subsanaciones..."):
+            subsanaciones, _ = _cargar_fuente_sub("subsanaciones")
 
-    conteo_orientador = subsanaciones["Orientador/a"].value_counts().reset_index()
-    conteo_orientador.columns = ["Orientador/a", "Cantidad"]
-    st.dataframe(conteo_orientador, use_container_width=True, hide_index=True)
+        conteo_orientador = subsanaciones["Orientador/a"].value_counts().reset_index()
+        conteo_orientador.columns = ["Orientador/a", "Cantidad"]
+        st.dataframe(conteo_orientador, use_container_width=True, hide_index=True)
 
-    st.divider()
+        st.divider()
 
-    col_sub1, col_sub2 = st.columns(2)
-    with col_sub1:
-        orientadores_sub = ["Todos"] + sorted(subsanaciones["Orientador/a"].dropna().unique().tolist())
-        f_orientador_sub = st.selectbox("Orientador/a", orientadores_sub, key="filtro_orientador_sub")
-    with col_sub2:
-        f_cc_sub = st.text_input("Buscar por CC (parcial o completo)", key="filtro_cc_sub")
+        col_sub1, col_sub2 = st.columns(2)
+        with col_sub1:
+            orientadores_sub = ["Todos"] + sorted(subsanaciones["Orientador/a"].dropna().unique().tolist())
+            f_orientador_sub = st.selectbox("Orientador/a", orientadores_sub, key="filtro_orientador_sub")
+        with col_sub2:
+            f_cc_sub = st.text_input("Buscar por CC (parcial o completo)", key="filtro_cc_sub")
 
-    subsanaciones_filtrado = subsanaciones.copy()
-    if f_orientador_sub != "Todos":
-        subsanaciones_filtrado = subsanaciones_filtrado[subsanaciones_filtrado["Orientador/a"] == f_orientador_sub]
-    if f_cc_sub:
-        subsanaciones_filtrado = subsanaciones_filtrado[subsanaciones_filtrado["Documento"].astype(str).str.contains(f_cc_sub, na=False)]
+        subsanaciones_filtrado = subsanaciones.copy()
+        if f_orientador_sub != "Todos":
+            subsanaciones_filtrado = subsanaciones_filtrado[subsanaciones_filtrado["Orientador/a"] == f_orientador_sub]
+        if f_cc_sub:
+            subsanaciones_filtrado = subsanaciones_filtrado[subsanaciones_filtrado["Documento"].astype(str).str.contains(f_cc_sub, na=False)]
 
-    st.write(f"**{len(subsanaciones_filtrado)} registros encontrados**")
-    st.dataframe(subsanaciones_filtrado, use_container_width=True)
+        st.write(f"**{len(subsanaciones_filtrado)} registros encontrados**")
+        st.dataframe(subsanaciones_filtrado, use_container_width=True)
 
-    st.divider()
+        st.divider()
 
-    st.subheader("Resumen de inconsistencias por caso")
+        st.subheader("Resumen de inconsistencias por caso")
 
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1:
-        momentos_bu_tab3 = sorted(f_tab3["general"]["Momento del proceso (Back UP)"].dropna().unique().tolist())
-        f_momento_bu_tab3 = st.multiselect("Momento del proceso (Back UP)", momentos_bu_tab3, key="f_momento_bu_tab3")
-    with fc2:
-        hitos_tab3 = sorted(f_tab3["general"]["Hito"].dropna().unique().tolist())
-        f_hito_tab3 = st.multiselect("Hito", hitos_tab3, key="f_hito_tab3")
-    with fc3:
-        paquetes_tab3 = sorted(f_tab3["general"]["Paquete"].dropna().unique().tolist())
-        f_paquete_tab3 = st.multiselect("Paquete", paquetes_tab3, key="f_paquete_tab3")
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            momentos_bu_tab3 = sorted(f_tab3["general"]["Momento del proceso (Back UP)"].dropna().unique().tolist())
+            f_momento_bu_tab3 = st.multiselect("Momento del proceso (Back UP)", momentos_bu_tab3, key="f_momento_bu_tab3")
+        with fc2:
+            hitos_tab3 = sorted(f_tab3["general"]["Hito"].dropna().unique().tolist())
+            f_hito_tab3 = st.multiselect("Hito", hitos_tab3, key="f_hito_tab3")
+        with fc3:
+            paquetes_tab3 = sorted(f_tab3["general"]["Paquete"].dropna().unique().tolist())
+            f_paquete_tab3 = st.multiselect("Paquete", paquetes_tab3, key="f_paquete_tab3")
 
-    if f_momento_bu_tab3 or f_hito_tab3 or f_paquete_tab3:
-        general_filtrado_tab3 = f_tab3["general"].copy()
-        if f_momento_bu_tab3:
-            general_filtrado_tab3 = general_filtrado_tab3[general_filtrado_tab3["Momento del proceso (Back UP)"].isin(f_momento_bu_tab3)]
-        if f_hito_tab3:
-            general_filtrado_tab3 = general_filtrado_tab3[general_filtrado_tab3["Hito"].isin(f_hito_tab3)]
-        if f_paquete_tab3:
-            general_filtrado_tab3 = general_filtrado_tab3[general_filtrado_tab3["Paquete"].isin(f_paquete_tab3)]
-        f_tab3_filtrado = dict(f_tab3)
-        f_tab3_filtrado["general"] = general_filtrado_tab3
-        with carga_personalizada("Aplicando filtros..."):
-            resumen = generar_resumen(f_tab3_filtrado)
+        if f_momento_bu_tab3 or f_hito_tab3 or f_paquete_tab3:
+            general_filtrado_tab3 = f_tab3["general"].copy()
+            if f_momento_bu_tab3:
+                general_filtrado_tab3 = general_filtrado_tab3[general_filtrado_tab3["Momento del proceso (Back UP)"].isin(f_momento_bu_tab3)]
+            if f_hito_tab3:
+                general_filtrado_tab3 = general_filtrado_tab3[general_filtrado_tab3["Hito"].isin(f_hito_tab3)]
+            if f_paquete_tab3:
+                general_filtrado_tab3 = general_filtrado_tab3[general_filtrado_tab3["Paquete"].isin(f_paquete_tab3)]
+            f_tab3_filtrado = dict(f_tab3)
+            f_tab3_filtrado["general"] = general_filtrado_tab3
+            with carga_personalizada("Aplicando filtros..."):
+                resumen = generar_resumen(f_tab3_filtrado)
 
-    df_resumen = pd.DataFrame([
-        {"Caso": nombre, "Cantidad": len(tabla)} for nombre, tabla in resumen.items()
-    ]).sort_values("Cantidad", ascending=True)
+        df_resumen = pd.DataFrame([
+            {"Caso": nombre, "Cantidad": len(tabla)} for nombre, tabla in resumen.items()
+        ]).sort_values("Cantidad", ascending=True)
 
-    fig_resumen = px.bar(
-        df_resumen, x="Cantidad", y="Caso", orientation="h", text="Cantidad",
-    )
-    fig_resumen.update_traces(marker_color="#821F0D", textposition="outside", cliponaxis=False)
-    fig_resumen.update_layout(
-        height=450,
-        showlegend=False,
-        margin=dict(l=220, r=60, t=20, b=20),  # margen izquierdo amplio para que no se corten las etiquetas
-        yaxis=dict(automargin=True),
-    )
+        fig_resumen = px.bar(
+            df_resumen, x="Cantidad", y="Caso", orientation="h", text="Cantidad",
+        )
+        fig_resumen.update_traces(marker_color="#821F0D", textposition="outside", cliponaxis=False)
+        fig_resumen.update_layout(
+            height=450,
+            showlegend=False,
+            margin=dict(l=220, r=60, t=20, b=20),  # margen izquierdo amplio para que no se corten las etiquetas
+            yaxis=dict(automargin=True),
+        )
 
-    evento = st.plotly_chart(
-        fig_resumen, use_container_width=True,
-        on_select="rerun", selection_mode="points", key="grafica_resumen",
-    )
+        evento = st.plotly_chart(
+            fig_resumen, use_container_width=True,
+            on_select="rerun", selection_mode="points", key="grafica_resumen",
+        )
 
-    puntos = evento.get("selection", {}).get("points", []) if evento else []
-    if puntos:
-        caso_clic = puntos[0]["y"]
-        st.markdown(f"### Detalle: {caso_clic}")
-        tabla_clic = resumen[caso_clic]
-        st.write(f"**{len(tabla_clic)} registros**")
-        st.dataframe(tabla_clic, use_container_width=True)
-        csv_clic = tabla_clic.to_csv(index=False, encoding="utf-8-sig")
-        st.download_button("⬇️ Descargar este caso (CSV)", csv_clic, f"{caso_clic}.csv", "text/csv")
-    else:
-        st.info("Haz clic en una barra para ver el detalle de ese caso.")
+        puntos = evento.get("selection", {}).get("points", []) if evento else []
+        if puntos:
+            caso_clic = puntos[0]["y"]
+            st.markdown(f"### Detalle: {caso_clic}")
+            tabla_clic = resumen[caso_clic]
+            st.write(f"**{len(tabla_clic)} registros**")
+            st.dataframe(tabla_clic, use_container_width=True)
+            csv_clic = tabla_clic.to_csv(index=False, encoding="utf-8-sig")
+            st.download_button("⬇️ Descargar este caso (CSV)", csv_clic, f"{caso_clic}.csv", "text/csv")
+        else:
+            st.info("Haz clic en una barra para ver el detalle de ese caso.")
 
-    st.divider()
-    st.subheader("Auditoría de campos vacíos en el FCS (columnas A–CE)")
+        st.divider()
+        st.subheader("Auditoría de campos vacíos en el FCS (columnas A–CE)")
 
-    top_vacios = vacios["campo_vacio"].value_counts().reset_index()
-    top_vacios.columns = ["Campo", "Cantidad"]
-    top_vacios = top_vacios.sort_values("Cantidad", ascending=True).tail(20)
+        top_vacios = vacios["campo_vacio"].value_counts().reset_index()
+        top_vacios.columns = ["Campo", "Cantidad"]
+        top_vacios = top_vacios.sort_values("Cantidad", ascending=True).tail(20)
 
-    fig_vacios = px.bar(
-        top_vacios, x="Cantidad", y="Campo", orientation="h", text="Cantidad",
-    )
-    fig_vacios.update_traces(marker_color="#FD531E", textposition="outside", cliponaxis=False)
-    fig_vacios.update_layout(
-        height=600,
-        showlegend=False,
-        margin=dict(l=280, r=60, t=20, b=20),
-        yaxis=dict(automargin=True),
-    )
+        fig_vacios = px.bar(
+            top_vacios, x="Cantidad", y="Campo", orientation="h", text="Cantidad",
+        )
+        fig_vacios.update_traces(marker_color="#FD531E", textposition="outside", cliponaxis=False)
+        fig_vacios.update_layout(
+            height=600,
+            showlegend=False,
+            margin=dict(l=280, r=60, t=20, b=20),
+            yaxis=dict(automargin=True),
+        )
 
-    evento_vacios = st.plotly_chart(
-        fig_vacios, use_container_width=True,
-        on_select="rerun", selection_mode="points", key="grafica_vacios",
-    )
+        evento_vacios = st.plotly_chart(
+            fig_vacios, use_container_width=True,
+            on_select="rerun", selection_mode="points", key="grafica_vacios",
+        )
 
-    st.divider()
+        st.divider()
 
-    puntos_vacios = evento_vacios.get("selection", {}).get("points", []) if evento_vacios else []
+        puntos_vacios = evento_vacios.get("selection", {}).get("points", []) if evento_vacios else []
 
-    if puntos_vacios:
-        campo_clic = puntos_vacios[0]["y"]
-        st.markdown(f"### Cédulas con '{campo_clic}' vacío")
-        indices_filtro_vacio = vacios[vacios["campo_vacio"] == campo_clic]["indice_fila"].tolist()
-    else:
-        st.markdown("### FCS completo — todas las cédulas con al menos un campo vacío")
-        indices_filtro_vacio = vacios["indice_fila"].unique().tolist()
+        if puntos_vacios:
+            campo_clic = puntos_vacios[0]["y"]
+            st.markdown(f"### Cédulas con '{campo_clic}' vacío")
+            indices_filtro_vacio = vacios[vacios["campo_vacio"] == campo_clic]["indice_fila"].tolist()
+        else:
+            st.markdown("### FCS completo — todas las cédulas con al menos un campo vacío")
+            indices_filtro_vacio = vacios["indice_fila"].unique().tolist()
 
-    detalle_fcs_completo = f_tab3["orientacion_consolidado"].loc[indices_filtro_vacio]
+        detalle_fcs_completo = f_tab3["orientacion_consolidado"].loc[indices_filtro_vacio]
 
-    st.write(f"**{len(detalle_fcs_completo)} registros**")
-    st.dataframe(detalle_fcs_completo, use_container_width=True)
-    csv_completo = detalle_fcs_completo.to_csv(index=False, encoding="utf-8-sig")
-    st.download_button("⬇️ Descargar (CSV)", csv_completo, "fcs_vacios.csv", "text/csv")
+        st.write(f"**{len(detalle_fcs_completo)} registros**")
+        st.dataframe(detalle_fcs_completo, use_container_width=True)
+        csv_completo = detalle_fcs_completo.to_csv(index=False, encoding="utf-8-sig")
+        st.download_button("⬇️ Descargar (CSV)", csv_completo, "fcs_vacios.csv", "text/csv")
 
 # =========================================================
 # TAB 4: Overview
@@ -593,6 +601,13 @@ with tab4:
                     st.success(mensaje)
                 else:
                     st.error(mensaje)
+
+    # ============================================================
+    # SECCIÓN 1b: Participantes presentados por Hito (Pago N) y En ruta
+    # ============================================================
+    with st.expander("🗂️ Participantes por Hito (pagos aprobados) y En ruta", expanded=True):
+        from vistas_gestion import render_hitos
+        render_hitos(general_filtrado)
 
     # ============================================================
     # SECCIÓN 2: Tabla de estados + gráfica de Momento del proceso
@@ -1201,3 +1216,18 @@ with tab8:
             st.plotly_chart(fig_cuartil, use_container_width=True)
         else:
             st.info("Sin datos de progreso para el filtro actual.")
+
+
+# =========================================================
+# TAB 9: Gestión diaria (a partir del Seguimiento General automatizado)
+# =========================================================
+with tab9:
+    from analitica import cargar_todo_cache, cargar_formacion_consolidado_cache
+    from vistas_gestion import render_gestion_diaria
+    with carga_personalizada("Cargando gestión diaria..."):
+        f_gd = cargar_todo_cache()
+        try:
+            form_gd = cargar_formacion_consolidado_cache()
+        except Exception:  # noqa: BLE001 -- sin el consolidado, la formación sale del seguimiento
+            form_gd = None
+    render_gestion_diaria(f_gd, form_gd)

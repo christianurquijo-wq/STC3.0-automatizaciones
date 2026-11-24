@@ -179,8 +179,10 @@ def mes_actual_es() -> str:
     return meses[datetime.date.today().month]
 
 def es_entregado(serie: pd.Series) -> pd.Series:
-    """True solo si el valor contiene la palabra 'Reportado' (ej. 'Entregado P1 - Reportado')."""
-    return serie.astype(str).str.contains("Reportado", case=False, na=False)
+    """True si la persona ya fue aprobada en un pago. nov-2026: el Hito pasó de «Reportado Julio/…» a «Pago 1»,
+    «Pago 2.1», … (aprobados por la SDDE) o «En ruta»; se aceptan ambos formatos."""
+    t = serie.astype(str).str.strip()
+    return t.str.match(r"(?i)^pago\s*\d") | t.str.contains("Reportado", case=False, na=False)
 
 def resumen_looker(general: pd.DataFrame, df_metas: pd.DataFrame, excluir_entregados: bool = False, hito_filtro: str = "Todos") -> dict:
     mes_actual = mes_actual_es()

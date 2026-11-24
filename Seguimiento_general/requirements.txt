@@ -6,3 +6,5 @@ python-dotenv>=1.0
 openpyxl>=3.1      # leer los archivos de aprobados/eliminados de las entregas mensuales
 requests>=2.31
 google-cloud-bigquery>=3.27   # Reporte CRM y Reporte SIS directo de BigQuery
+pyarrow>=18.0.0      # carga a BigQuery (Upload_STC3.0) encadenada al modo real
+db-dtypes
