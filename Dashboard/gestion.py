@@ -124,7 +124,8 @@ def _ficha(df: pd.DataFrame, gestor: str, desde: str, umbral_etapa: str, hoy: dt
     out = pd.DataFrame({
         "Cédula": _sin_decimal(_col(df, "CC Prospecto")), "Nombre": _col(df, "Nombre completo"),
         "Teléfono": _sin_decimal(_col(df, "Teléfono")), "Correo": _col(df, "Correo"), "Paquete": df["_paq"].str.title(),
-        "Evento/Base": _col(df, "Evento/Base"), "Gestor": _texto(_col(df, gestor)),
+        "Evento/Base": _col(df, "Evento/Base"),
+        "Gestor": _texto(_col(df, gestor)).str.title().replace("", "(sin gestor)"),
         "Momento del proceso": _col(df, "Momento del proceso (Back UP)"),
         "Estado formación": _col(df, "Estado de la formación"),
         "Esperando desde": df[desde].dt.date, "Días hábiles": dias,
@@ -207,6 +208,32 @@ def actividad(prep: pd.DataFrame, fuentes: dict) -> pd.DataFrame:
     act = pd.concat(partes, ignore_index=True)
     act["Gestor"] = act["Gestor"].replace({"": "(sin gestor)", "<NA>": "(sin gestor)"}).fillna("(sin gestor)")
     return act.dropna(subset=["Fecha"])
+
+
+def habiles_entre(desde: dt.date, hasta: dt.date) -> list[dt.date]:
+    dias = pd.bdate_range(desde, hasta, freq="C", holidays=FESTIVOS_CO)
+    return [d.date() for d in dias]
+
+
+def serie_efectivos(act: pd.DataFrame, dias: list[dt.date], responsables: list[str] | None = None,
+                    proceso: str | None = None) -> pd.DataFrame:
+    """Efectivos (gestiones completadas) por día hábil. Sin responsables: una serie por proceso (total). Con
+    responsables: una serie por persona, del proceso elegido. Los días sin gestión quedan en 0."""
+    a = act[act["Fecha"].dt.date.isin(dias)]
+    if responsables:
+        a = a[a["Gestor"].isin(responsables)]
+        if proceso:
+            a = a[a["Proceso"].eq(proceso)]
+        grupo, valores = "Serie", list(responsables)
+        a = a.assign(Serie=a["Gestor"])
+    else:
+        grupo, valores = "Serie", ["Verificación", "Orientación", "Formación", "Encuestas"]
+        a = a.assign(Serie=a["Proceso"])
+    conteo = a.groupby([a["Fecha"].dt.date, "Serie"]).size()
+    idx = pd.MultiIndex.from_product([dias, valores], names=["Día", grupo])
+    out = conteo.reindex(idx, fill_value=0).rename("Efectivos").reset_index()
+    out["Etiqueta"] = [etiqueta_dia(d) for d in out["Día"]]
+    return out
 
 
 def resumen_dia(act: pd.DataFrame, dia: dt.date) -> pd.DataFrame:
