@@ -152,15 +152,38 @@ from column_mapping import (
 )
 import datetime
 
+def metas_desde_parametros() -> pd.DataFrame:
+    """Metas mensuales desde la pestaña Parámetros del Seguimiento General (fuente «parametros» de config.py)."""
+    par, _ = cargar_fuente("parametros")
+    faltan = [c for c in ("Mes", "Básico", "Especializado", "Total") if c not in par.columns]
+    if faltan:
+        raise KeyError(f"Parámetros no tiene las columnas {faltan}")
+    df = par[["Mes", "Básico", "Especializado", "Total"]].copy()
+    df = df[df["Mes"].notna() & (df["Mes"].astype(str).str.strip() != "")]
+    for c in ("Básico", "Especializado", "Total"):
+        t = df[c].astype(str).str.strip()
+        miles = t.str.match(r"^\d{1,3}(\.\d{3})+$")  # «1.275» (formato colombiano) → 1275; «184.0» se respeta
+        df[c] = pd.to_numeric(t.where(~miles, t.str.replace(".", "", regex=False)).str.replace(",", ".", regex=False),
+                              errors="coerce")
+    return df.reset_index(drop=True)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def cargar_metas() -> pd.DataFrame:
     from bigquery_api import cargar_metas_bigquery
     # oct-2026: si la tabla de metas falla, mostrar el motivo real (Streamlit Cloud oculta
     # el mensaje de las excepciones) y seguir con metas en 0 en vez de tumbar la pestana.
     try:
         df = cargar_metas_bigquery()
-    except Exception as e:
-        st.warning(f"No se pudieron cargar las metas (METAS_STC_3): {type(e).__name__}: {e}")
-        return pd.DataFrame({"Mes": [], "Básico": [], "Especializado": [], "Total": []})
+    except Exception as e_bq:
+        # nov-2026: la tabla METAS_STC_3 ya no existe en BigQuery. Las metas mensuales están en la pestaña
+        # «Parámetros» del Seguimiento General (columnas Mes, Básico, Especializado, Total): se leen de ahí.
+        try:
+            df = metas_desde_parametros()
+        except Exception as e:
+            st.warning(f"No se pudieron cargar las metas (BigQuery: {type(e_bq).__name__}; Parámetros: "
+                       f"{type(e).__name__}: {e})")
+            return pd.DataFrame({"Mes": [], "Básico": [], "Especializado": [], "Total": []})
     for col in ["Básico", "Especializado", "Total"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
