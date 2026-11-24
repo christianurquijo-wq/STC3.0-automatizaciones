@@ -9,7 +9,8 @@ Qué hace:
   1. Lee las fuentes DIRECTO de sus archivos (no de las pestañas IMPORT): Verificación, Consolidado FCS
      (orientación), Consolidado de formación y Modelo n8n (remisiones). Si la cuenta de servicio no tiene acceso a
      alguno, usa la pestaña IMPORT equivalente del mismo Seguimiento y lo avisa.
-  2. Lee del Seguimiento: Reporte CRM, Reporte SIS, Reporte Atendidos/Pendientes STC y Parámetros.
+  2. Reporte CRM y Reporte SIS: consulta BigQuery (reportes_bigquery.py) y, en modo real, reescribe esas pestañas.
+     Lee del Seguimiento: Reporte Atendidos/Pendientes STC, Parámetros y Base JCO.
   3. Calcula todas las columnas con motor_seguimiento.calcular() (mismas reglas que las fórmulas).
   4. Agrega al final las cédulas de Orientación/Verificación que faltaban (antes: CONTROL DE FALTANTES).
   5. Escribe SOLO valores:
@@ -143,8 +144,20 @@ def formacion_como_import(filas: list[list]) -> list[list]:
     return salida
 
 
-def leer_fuentes(gc: gspread.Client, seg: gspread.Spreadsheet) -> tuple[dict, pd.DataFrame | None, list[str]]:
+def leer_fuentes(gc: gspread.Client, seg: gspread.Spreadsheet) -> tuple[dict, pd.DataFrame | None, list[str], dict]:
     fuentes, avisos = {}, []
+    # Reporte CRM y Reporte SIS: directo de BigQuery (antes los pegaba un flujo de n8n). Si falla, se usan las
+    # pestañas tal como estén y se avisa.
+    import reportes_bigquery as RB
+    reportes = {}
+    try:
+        reportes = RB.consultar(RAIZ, log=log)
+        for nombre, filas in reportes.items():
+            fuentes[nombre] = M.tabla(filas)
+            log(f"{nombre}: {len(filas) - 1} filas desde BigQuery")
+    except Exception as e:  # noqa: BLE001
+        avisos.append(f"BigQuery: {type(e).__name__}: {str(e)[:200]} · se usaron las pestañas Reporte CRM/SIS")
+        reportes = {}
     for nombre, (var, rango, respaldo) in EXTERNAS.items():
         filas = None
         sid = os.getenv(var, "").strip()
@@ -160,7 +173,8 @@ def leer_fuentes(gc: gspread.Client, seg: gspread.Spreadsheet) -> tuple[dict, pd
             filas = leer_rangos(seg, [respaldo])[0]
             log(f"{nombre}: {len(filas) - 1} filas desde la pestaña IMPORT del Seguimiento")
         fuentes[nombre] = M.tabla(filas)
-    for nombre, filas in zip(INTERNAS, leer_rangos(seg, list(INTERNAS.values()))):
+    internas = {n: r for n, r in INTERNAS.items() if n not in fuentes}
+    for nombre, filas in zip(internas, leer_rangos(seg, list(internas.values()))):
         fuentes[nombre] = M.tabla(filas)
         log(f"{nombre}: {len(filas) - 1} filas")
     # Fórmulas de Parámetros (col. M): dicen qué hitos cuenta cada fila para el factor de la col. BK.
@@ -175,7 +189,7 @@ def leer_fuentes(gc: gspread.Client, seg: gspread.Spreadsheet) -> tuple[dict, pd
         except (APIError, SpreadsheetNotFound, PermissionError) as e:
             avisos.append(f"Remisiones: sin acceso a «Modelo n8n» ({type(e).__name__}); la columna Remitido no se "
                           "actualiza")
-    return fuentes, remisiones, avisos
+    return fuentes, remisiones, avisos, reportes
 
 
 def leer_base(seg: gspread.Spreadsheet) -> pd.DataFrame:
@@ -300,6 +314,20 @@ def escribir_tabla(seg: gspread.Spreadsheet, nombre: str, df: pd.DataFrame) -> N
     reintentos(lambda: ws.update(range_name="A1", values=valores, value_input_option="USER_ENTERED"))
 
 
+def escribir_reportes(seg: gspread.Spreadsheet, reportes: dict[str, list[list]]) -> None:
+    """Reescribe las columnas de datos de Reporte CRM (A:L) y Reporte SIS (A:M) con lo traído de BigQuery y borra
+    las filas sobrantes de esas mismas columnas. Las columnas de la derecha (fórmulas de control) no se tocan."""
+    datos, limpiar = [], []
+    for nombre, filas in reportes.items():
+        ultima = M.get_column_letter(len(filas[0]))
+        datos.append({"range": f"'{nombre}'!A1:{ultima}{len(filas)}",
+                      "values": [[celda(v) for v in f] for f in filas]})
+        limpiar.append(f"'{nombre}'!A{len(filas) + 1}:{ultima}")
+    reintentos(lambda: seg.values_batch_clear(limpiar))
+    reintentos(lambda: seg.values_batch_update({"valueInputOption": "USER_ENTERED", "data": datos}))
+    log("Pestañas actualizadas desde BigQuery: " + ", ".join(f"{n} ({len(f) - 1} filas)" for n, f in reportes.items()))
+
+
 def escribir_real(seg: gspread.Spreadsheet, tabla: pd.DataFrame, n_base: int) -> None:
     ws = seg.worksheet(HOJA)
     ultima_fila = FILA_DATOS + len(tabla) - 1
@@ -335,7 +363,7 @@ def main(destino: str | None = None) -> None:
         validar_encabezados(seg)
     base = leer_base(seg)
     log(f"Filas actuales del seguimiento: {len(base)}")
-    fuentes, remisiones, avisos = leer_fuentes(gc, seg)
+    fuentes, remisiones, avisos, reportes = leer_fuentes(gc, seg)
 
     n_base = len(base)
     nuevas = [] if args.sin_nuevas else M.faltantes(base, fuentes)
@@ -358,6 +386,8 @@ def main(destino: str | None = None) -> None:
     log(f"Hito (col. BH): {tabla['BH'].replace('', '(vacío)').value_counts().to_dict()}")
     if args.destino == "real":
         escribir_real(seg, tabla, n_base)
+        if reportes:
+            escribir_reportes(seg, reportes)
     else:
         escribir_prueba(seg, tabla)
     escribir_auditoria(seg, M.auditoria_jco(tabla, fuentes))
