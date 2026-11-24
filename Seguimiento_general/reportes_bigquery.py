@@ -79,10 +79,14 @@ CONSULTAS = {"Reporte CRM": SQL_CRM, "Reporte SIS": SQL_SIS}
 
 
 def buscar_llave(raiz: Path) -> Path | None:
-    ruta = os.getenv("BQ_SA_FILE", "").strip()
+    ruta = os.getenv("BQ_SA_FILE", "").strip().strip('"')
     if ruta:
-        p = Path(ruta) if Path(ruta).is_absolute() else raiz / ruta
-        return p if p.exists() else None
+        # En GitHub Actions una ruta de Windows (C:\Users\…) no existe: se prueba también el nombre del archivo en la
+        # raíz del repo y en CONFIG_SEGURIDAD, y si no, se busca por la cuenta.
+        nombre = ruta.replace("\\", "/").split("/")[-1]
+        for p in (Path(ruta), raiz / ruta, raiz / nombre, raiz / "CONFIG_SEGURIDAD" / nombre):
+            if p.exists():
+                return p
     cuenta = os.getenv("BQ_SA_EMAIL", "").strip() or CUENTA_BQ
     for carpeta in (raiz, raiz / "CONFIG_SEGURIDAD"):
         for p in sorted(carpeta.glob("*.json")):
@@ -96,9 +100,6 @@ def buscar_llave(raiz: Path) -> Path | None:
 
 def diagnostico(raiz: Path) -> str:
     """Qué .json hay y de qué cuenta es cada uno (sin mostrar llaves), para saber por qué no se encontró."""
-    ruta = os.getenv("BQ_SA_FILE", "").strip()
-    if ruta:
-        return f"BQ_SA_FILE={ruta} no existe (se busca relativo a {raiz})."
     vistos = []
     for carpeta in (raiz, raiz / "CONFIG_SEGURIDAD"):
         for p in sorted(carpeta.glob("*.json")):
