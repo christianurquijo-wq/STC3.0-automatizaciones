@@ -323,7 +323,8 @@ def escribir_reportes(seg: gspread.Spreadsheet, reportes: dict[str, list[list]])
         datos.append({"range": f"'{nombre}'!A1:{ultima}{len(filas)}",
                       "values": [[celda(v) for v in f] for f in filas]})
         limpiar.append(f"'{nombre}'!A{len(filas) + 1}:{ultima}")
-    reintentos(lambda: seg.values_batch_clear(limpiar))
+    # gspread 6: los rangos van en el cuerpo ({"ranges": [...]}); pasados sueltos no borraban nada.
+    reintentos(lambda: seg.values_batch_clear(body={"ranges": limpiar}))
     reintentos(lambda: seg.values_batch_update({"valueInputOption": "USER_ENTERED", "data": datos}))
     log("Pestañas actualizadas desde BigQuery: " + ", ".join(f"{n} ({len(f) - 1} filas)" for n, f in reportes.items()))
 
@@ -384,10 +385,11 @@ def main(destino: str | None = None) -> None:
 
     log(f"Evento/Base (col. E): {tabla['E'].replace('', '(vacío)').value_counts().to_dict()}")
     log(f"Hito (col. BH): {tabla['BH'].replace('', '(vacío)').value_counts().to_dict()}")
+    # Reporte CRM y Reporte SIS son copia directa de BigQuery: se actualizan en ambos modos (también en prueba).
+    if reportes:
+        escribir_reportes(seg, reportes)
     if args.destino == "real":
         escribir_real(seg, tabla, n_base)
-        if reportes:
-            escribir_reportes(seg, reportes)
     else:
         escribir_prueba(seg, tabla)
     escribir_auditoria(seg, M.auditoria_jco(tabla, fuentes))
