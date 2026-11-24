@@ -1,0 +1,7 @@
+# Reconstrucción del Seguimiento General STC 3.0 (ops_run_script.yml usa este archivo).
+gspread>=6.1
+google-auth>=2.35
+pandas>=2.2
+python-dotenv>=1.0
+openpyxl>=3.1      # leer los archivos de aprobados/eliminados de las entregas mensuales
+requests>=2.31

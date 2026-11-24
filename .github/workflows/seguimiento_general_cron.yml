@@ -1,0 +1,54 @@
+# Seguimiento General STC 3.0 · reconstrucción automática cada 2 horas.
+# Corre el mismo script que el botón del Panel (Seguimiento_general/reconstruir_seguimiento_real.py) con la
+# bitácora de ops_logger.py, así cada ejecución queda en LOG_EJECUCIONES y, si falla, llega la alerta por correo.
+# Comparte el grupo de concurrencia con ops_run_script.yml: si el Panel y el cron coinciden, uno espera al otro.
+name: STC · Seguimiento General (cada 2 h)
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"   # minuto 17 de cada 2 horas (UTC). GitHub puede retrasarlo unos minutos.
+  workflow_dispatch: {}
+
+concurrency:
+  group: ops-Seguimiento_general/reconstruir_seguimiento_real.py
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "Seguimiento_general/requirements.txt"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r Seguimiento_general/requirements.txt google-auth requests
+
+      - name: Restaurar archivos secretos
+        env:
+          SECRETS_BUNDLE: ${{ secrets.SECRETS_BUNDLE }}
+        run: |
+          if [ -z "$SECRETS_BUNDLE" ]; then echo "::error::SECRETS_BUNDLE no configurado"; exit 1; fi
+          echo "$SECRETS_BUNDLE" | base64 -d > "$RUNNER_TEMP/s.zip"
+          unzip -oq "$RUNNER_TEMP/s.zip" -d .
+          rm -f "$RUNNER_TEMP/s.zip"
+
+      - name: Reconstruir con bitácora
+        env:
+          OPS_ORIGEN: cron
+          OPS_ACTOR: github-cron
+          OPS_SHEET_ID: ${{ secrets.OPS_SHEET_ID }}
+          OPS_LOG_SA_JSON: ${{ secrets.OPS_LOG_SA_JSON }}
+          OPS_ALERT_WEBHOOK: ${{ secrets.OPS_ALERT_WEBHOOK }}
+          OPS_ALERT_TOKEN: ${{ secrets.OPS_ALERT_TOKEN }}
+        run: python ops_logger.py --script "Seguimiento_general/reconstruir_seguimiento_real.py" --cwd script --timeout 30
