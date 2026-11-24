@@ -200,7 +200,7 @@ def _tabla_prediccion_html(pred: dict) -> str:
 
     return (
         f'<h3 style="color:#292929; margin-top:24px;">Avance general del proyecto</h3>'
-        f'<p style="font-size:12px; color:#656A71;">Proyecto: 10/07/2026 — 30/11/2026 · Hoy: {pred["hoy"]} · '
+        f'<p style="font-size:12px; color:#656A71;">Proyecto: {pred.get("inicio", "10/07/2026")} — {pred.get("fin", "31/12/2026")} · Hoy: {pred["hoy"]} · '
         f'{pred["dias_restantes"]} días restantes ({pred["pct_tiempo"]}% del tiempo transcurrido)</p>'
         f'<table style="width:100%; border-collapse:collapse;">'
         f'<tr><th style="padding:8px; text-align:left; border-bottom:2px solid #292929; font-size:12px; color:#656A71;">Paquete</th>'

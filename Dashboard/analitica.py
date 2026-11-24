@@ -440,9 +440,14 @@ def html_diagrama_ruta(progreso: dict) -> str:
 
 import datetime as dt
 
+# Vigencia del proyecto STC 3.0 (nov-2026: la fecha límite pasó del 30/11/2026 al 31/12/2026).
+FECHA_INICIO_PROYECTO = dt.date(2026, 7, 10)
+FECHA_FIN_PROYECTO = dt.date(2026, 12, 31)
+
+
 def calcular_prediccion(general: pd.DataFrame) -> dict:
-    fecha_inicio = dt.date(2026, 7, 10)
-    fecha_fin = dt.date(2026, 11, 30)
+    fecha_inicio = FECHA_INICIO_PROYECTO
+    fecha_fin = FECHA_FIN_PROYECTO
     hoy = dt.date.today()
 
     dias_totales = (fecha_fin - fecha_inicio).days
@@ -454,6 +459,8 @@ def calcular_prediccion(general: pd.DataFrame) -> dict:
         "2026-10-12",  # Día de la Raza / Diversidad Étnica y Cultural
         "2026-11-02",  # Todos los Santos
         "2026-11-16",  # Independencia de Cartagena
+        "2026-12-08",  # Inmaculada Concepción
+        "2026-12-25",  # Navidad
     ]
     dias_habiles_restantes = int(np.busday_count(
         hoy.isoformat(), (fecha_fin + dt.timedelta(days=1)).isoformat(),
@@ -484,6 +491,8 @@ def calcular_prediccion(general: pd.DataFrame) -> dict:
 
     return {
         "hoy": hoy.strftime("%d/%m/%Y"),
+        "inicio": fecha_inicio.strftime("%d/%m/%Y"),
+        "fin": fecha_fin.strftime("%d/%m/%Y"),
         "dias_totales": dias_totales,
         "dias_restantes": dias_restantes,
         "dias_habiles_restantes": dias_habiles_restantes,
@@ -533,7 +542,7 @@ def html_franja_prediccion(pred: dict) -> str:
     return (
         f'<div style="background-color:#FFFFFF; border:1px solid #EAEAEA; border-radius:10px; padding:16px 20px; margin-bottom:16px;">'
         f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
-        f'<span style="font-size:13px; color:#656A71;">Proyecto: 10/07/2026 — 30/11/2026 &nbsp;·&nbsp; Hoy: {pred["hoy"]}</span>'
+        f'<span style="font-size:13px; color:#656A71;">Proyecto: {pred["inicio"]} — {pred["fin"]} &nbsp;·&nbsp; Hoy: {pred["hoy"]}</span>'
         f'<span style="font-size:13px; color:#292929; font-weight:bold;">⏳ {pred["dias_restantes"]} días restantes &nbsp;|&nbsp; {pred["pct_tiempo"]}% del tiempo transcurrido</span>'
         f'</div>'
         f'{barra_basico}{barra_especializado}{barra_total}'
@@ -556,7 +565,7 @@ def html_tarjetas_ritmo(pred: dict) -> str:
     return (
         f'<div style="margin-top:16px;">'
         f'<div style="font-size:13px; color:#656A71; margin-bottom:8px;">'
-        f'Ritmo necesario para llegar a la meta el 30/11/2026 ({pred["dias_habiles_restantes"]} días hábiles restantes):</div>'
+        f'Ritmo necesario para llegar a la meta el {pred["fin"]} ({pred["dias_habiles_restantes"]} días hábiles restantes):</div>'
         f'<div style="display:flex; gap:12px;">'
         f'{tarjeta("Básico", pred["basico"], "#FD531E")}'
         f'{tarjeta("Especializado", pred["especializado"], "#821F0D")}'
