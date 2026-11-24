@@ -170,7 +170,12 @@ def leer_fuentes(gc: gspread.Client, seg: gspread.Spreadsheet) -> tuple[dict, pd
             except (APIError, SpreadsheetNotFound, PermissionError) as e:
                 avisos.append(f"{nombre}: sin acceso al origen ({type(e).__name__}); se usó la pestaña IMPORT")
         if filas is None:
-            filas = leer_rangos(seg, [respaldo])[0]
+            try:
+                filas = leer_rangos(seg, [respaldo])[0]
+            except APIError as e:  # la pestaña IMPORT ya se borró: sin origen no hay con qué calcular
+                sys.exit(f"{nombre}: no hay acceso al archivo de origen ({var}) y la pestaña de respaldo ya no existe "
+                         f"({type(e).__name__}). Revisa que la cuenta de servicio siga compartida en ese archivo; no "
+                         "se escribió nada.")
             log(f"{nombre}: {len(filas) - 1} filas desde la pestaña IMPORT del Seguimiento")
         fuentes[nombre] = M.tabla(filas)
     internas = {n: r for n, r in INTERNAS.items() if n not in fuentes}
@@ -329,7 +334,8 @@ def escribir_reportes(seg: gspread.Spreadsheet, reportes: dict[str, list[list]])
     log("Pestañas actualizadas desde BigQuery: " + ", ".join(f"{n} ({len(f) - 1} filas)" for n, f in reportes.items()))
 
 
-def escribir_real(seg: gspread.Spreadsheet, tabla: pd.DataFrame, n_base: int) -> None:
+def escribir_real(seg: gspread.Spreadsheet, tabla: pd.DataFrame, n_base: int, avisos_fila1: tuple[str, str] = ("", "")
+                  ) -> None:
     ws = seg.worksheet(HOJA)
     ultima_fila = FILA_DATOS + len(tabla) - 1
     if ws.row_count < ultima_fila:
@@ -342,6 +348,9 @@ def escribir_real(seg: gspread.Spreadsheet, tabla: pd.DataFrame, n_base: int) ->
     if len(tabla) > n_base:  # cédulas nuevas: también su columna F (manual) para que queden en el seguimiento
         datos.append({"range": f"{HOJA}!F{FILA_DATOS + n_base}:F{ultima_fila}",
                       "values": [[v] for v in tabla["F"].iloc[n_base:]]})
+    # Fila 1: C1 y G1 tenían fórmulas de alerta (cédulas repetidas / CONTROL DE FALTANTES); ahora las escribe el script.
+    datos.append({"range": f"{HOJA}!C1", "values": [[avisos_fila1[0]]]})
+    datos.append({"range": f"{HOJA}!G1", "values": [[avisos_fila1[1]]]})
     # gspread 6: values_batch_update(body) con el cuerpo completo de la API (data + valueInputOption).
     reintentos(lambda: seg.values_batch_update({"valueInputOption": "USER_ENTERED", "data": datos}))
     log(f"Actualizado «{HOJA}»: {len(tabla)} filas · {len(bloques_calculados())} bloques de columnas")
@@ -389,7 +398,11 @@ def main(destino: str | None = None) -> None:
     if reportes:
         escribir_reportes(seg, reportes)
     if args.destino == "real":
-        escribir_real(seg, tabla, n_base)
+        from datetime import datetime, timedelta, timezone
+        hora = datetime.now(timezone(timedelta(hours=-5))).strftime("%d/%m/%Y %I:%M %p")
+        escribir_real(seg, tabla, n_base, (
+            f"¡OJO! Hay {repetidas} cédulas repetidas" if repetidas else "",
+            f"Actualizado por script: {hora}" + (f" · {len(nuevas)} cédulas nuevas agregadas" if nuevas else "")))
     else:
         escribir_prueba(seg, tabla)
     escribir_auditoria(seg, M.auditoria_jco(tabla, fuentes))
