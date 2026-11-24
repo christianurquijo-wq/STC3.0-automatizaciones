@@ -94,6 +94,22 @@ def buscar_llave(raiz: Path) -> Path | None:
     return None
 
 
+def diagnostico(raiz: Path) -> str:
+    """Qué .json hay y de qué cuenta es cada uno (sin mostrar llaves), para saber por qué no se encontró."""
+    ruta = os.getenv("BQ_SA_FILE", "").strip()
+    if ruta:
+        return f"BQ_SA_FILE={ruta} no existe (se busca relativo a {raiz})."
+    vistos = []
+    for carpeta in (raiz, raiz / "CONFIG_SEGURIDAD"):
+        for p in sorted(carpeta.glob("*.json")):
+            try:
+                correo = json.loads(p.read_text(encoding="utf-8")).get("client_email", "(sin client_email)")
+            except (OSError, ValueError):
+                correo = "(no se pudo leer)"
+            vistos.append(f"{p.relative_to(raiz)} → {correo}")
+    return "JSON encontrados: " + ("; ".join(vistos) if vistos else "ninguno") + "."
+
+
 def _valor(v):
     if v is None:
         return ""
@@ -111,9 +127,11 @@ def consultar(raiz: Path, log=print) -> dict[str, list[list]]:
     llave = buscar_llave(raiz)
     if llave is None:
         raise FileNotFoundError(f"no encontré la llave JSON de {os.getenv('BQ_SA_EMAIL') or CUENTA_BQ} "
-                                "(define BQ_SA_FILE en el .env)")
+                                f"(define BQ_SA_FILE en el .env). {diagnostico(raiz)}")
     cred = Credentials.from_service_account_file(str(llave),
-                                                 scopes=["https://www.googleapis.com/auth/bigquery.readonly"])
+                                                 scopes=["https://www.googleapis.com/auth/bigquery"])
+    # «bigquery.readonly» no deja crear trabajos de consulta (403 insufficient authentication scopes); lo que limita
+    # a solo lectura son los roles de la cuenta (Data Viewer + Job User), no el scope.
     cliente = bigquery.Client(credentials=cred, project=os.getenv("BQ_PROJECT", "").strip() or cred.project_id)
     log(f"BigQuery: {cred.service_account_email} · proyecto {cliente.project} · llave {llave.name}")
 
