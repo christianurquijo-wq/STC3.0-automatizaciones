@@ -213,7 +213,10 @@ def calcular(base: pd.DataFrame, fuentes: dict[str, pd.DataFrame], remisiones: p
     mes = dict(zip(par["I"].astype(str).str.strip(), par["J"]))
     out["BI"] = [mes.get(str(h).strip(), "") if not vacio(h) else "" for h in hito_reporte]
     out["BJ"] = buscar(doc, ori, "DC")
-    tipo = dict(zip(par["H"].astype(str).str.strip(), par["N"]))
+    # BK · factor Meta / personas reportadas por entrega y paquete. CORRIGE (nov-2026): antes se traía Parámetros!N
+    # (= L/M), pero M cuenta con COUNTIFS la columna BH de esta hoja, que ahora dice «Pago N»; M quedó en 0 y N en
+    # #DIV/0!. Ahora el conteo se hace aquí con el hito reportado del Consolidado FCS (mismas reglas de M).
+    tipo = factores_paquete(par, fuentes.get("Parámetros fórmulas"), hito_reporte, out["AH"])
     out["BK"] = [tipo.get(f"{h}{a}".strip(), "") if not vacio(h) else "" for h, a in zip(hito_reporte, out["AH"])]
 
     # BE · momento del proceso
@@ -280,6 +283,47 @@ def cohorte_jco(texto) -> str:
         return ""
     sufijo = re.sub(r"[\s_\-]+", "", t[3:])
     return COHORTES_JCO.get(sufijo, "JCO_" + sufijo)
+
+
+def factores_paquete(par: pd.DataFrame, formulas: pd.DataFrame | None, hito: pd.Series,
+                     paquete: pd.Series) -> dict[str, float]:
+    """«Reportado AgostoBÁSICO» → Meta (L) / personas (M), como Parámetros!N, pero contando en Python.
+
+    M en Parámetros es un número fijo (se respeta) o COUNTIFS sobre 'SEGUIMIENTO GENERAL'!BH (hito) y AH (paquete);
+    se leen esas fórmulas para saber qué hitos suma cada fila (p. ej. Septiembre 1 + Septiembre 2) y se cuenta con el
+    hito reportado del Consolidado FCS. Si M da 0, el factor queda vacío (antes: #DIV/0!)."""
+    conteo = pd.Series(1, index=range(len(hito))).groupby(
+        [hito.astype(str).str.strip().values, paquete.astype(str).str.strip().values]).sum().to_dict()
+
+    def valor_celda(ref: str):
+        m = re.fullmatch(r"\$?([A-Z]+)\$?(\d+)", ref.strip())
+        if not m:
+            return ref.strip().strip('"')
+        col, fila = m.group(1), int(m.group(2)) - 2  # fila 1 = encabezado; par empieza en la fila 2
+        return str(par[col].iloc[fila]).strip() if col in par and 0 <= fila < len(par) else ""
+
+    salida = {}
+    for i in range(len(par)):
+        llave = str(par["H"].iloc[i]).strip() if "H" in par else ""
+        if not llave:
+            continue
+        meta = num(par["L"].iloc[i]) if "L" in par else 0
+        f = str(formulas["M"].iloc[i]) if formulas is not None and "M" in formulas and i < len(formulas) else ""
+        if f.startswith("=") and "COUNTIFS" in f.upper():
+            m_total = 0
+            for args in re.findall(r"COUNTIFS\(([^)]*)\)", f, flags=re.I):
+                partes = [a.strip() for a in re.split(r"[,;](?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", args)]
+                crit = {}
+                for rango, criterio in zip(partes[0::2], partes[1::2]):
+                    col = rango.split("!")[-1].split(":")[0].replace("$", "")
+                    crit[col] = valor_celda(criterio)
+                m_total += conteo.get((crit.get("BH", ""), crit.get("AH", "")), 0)
+        elif formulas is not None and f and not f.startswith("="):
+            m_total = num(f)
+        else:  # sin fórmulas (pruebas): se usa el M que haya, si es número
+            m_total = num(par["M"].iloc[i]) if "M" in par else 0
+        salida[llave] = (meta / m_total) if m_total else ""
+    return salida
 
 
 def docs_jco(fuentes: dict[str, pd.DataFrame]) -> dict[str, str]:

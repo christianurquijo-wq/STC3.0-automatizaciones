@@ -163,6 +163,9 @@ def leer_fuentes(gc: gspread.Client, seg: gspread.Spreadsheet) -> tuple[dict, pd
     for nombre, filas in zip(INTERNAS, leer_rangos(seg, list(INTERNAS.values()))):
         fuentes[nombre] = M.tabla(filas)
         log(f"{nombre}: {len(filas) - 1} filas")
+    # Fórmulas de Parámetros (col. M): dicen qué hitos cuenta cada fila para el factor de la col. BK.
+    r = reintentos(lambda: seg.values_batch_get([INTERNAS["Parámetros"]], params={"valueRenderOption": "FORMULA"}))
+    fuentes["Parámetros fórmulas"] = M.tabla(r["valueRanges"][0].get("values", []))
     remisiones = None
     sid = os.getenv("SHEET_ID_REMISIONES", "").strip()
     if sid:
