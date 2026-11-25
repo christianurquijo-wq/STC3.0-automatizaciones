@@ -13,6 +13,48 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 COLUMNAS_EXCLUIR_VACIOS = [6, 7]  # índices 0-based de G y H
 FCS_ULTIMA_COLUMNA_AUDITORIA = 83  # A hasta CE
 
+
+# =========================================================
+# Criterio oficial de avance (nov-2026, acordado con Datágil — igual al conteo del Seguimiento General)
+#   Básico logrado        = Paquete BÁSICO y Reporte FINALIZADO / FINALIZADO PENDIENTE X REMISIÓN.
+#   Especializado logrado = Paquete ESPECIALIZADO, Reporte FINALIZADO / FINALIZADO PENDIENTE X REMISIÓN
+#                           y Estado de la formación FINALIZADO / CERTIFICADO.
+# Los textos se comparan en mayúsculas y sin tildes (BÁSICO = BASICO, REMISIÓN = REMISION).
+# =========================================================
+REPORTES_FINALIZADOS = {"FINALIZADO", "FINALIZADO PENDIENTE X REMISION"}
+FORMACION_FINALIZADA = {"FINALIZADO", "CERTIFICADO"}
+
+
+def texto_norm(serie: pd.Series) -> pd.Series:
+    """Serie en mayúsculas, sin tildes ni espacios extra; vacíos y NaN como ''."""
+    return serie.map(lambda v: normalizar_texto(v) or "")
+
+
+def _col(df: pd.DataFrame, columna: str) -> pd.Series:
+    if columna not in df.columns:
+        return pd.Series([""] * len(df), index=df.index)
+    return texto_norm(df[columna])
+
+
+def es_reporte_finalizado(df: pd.DataFrame) -> pd.Series:
+    return _col(df, "Reporte").isin(REPORTES_FINALIZADOS)
+
+
+def es_paquete(df: pd.DataFrame, paquete: str) -> pd.Series:
+    return _col(df, "Paquete") == normalizar_texto(paquete)
+
+
+def es_formacion_finalizada(df: pd.DataFrame) -> pd.Series:
+    return _col(df, "Estado de la formación").isin(FORMACION_FINALIZADA)
+
+
+def es_basico_logrado(df: pd.DataFrame) -> pd.Series:
+    return es_paquete(df, "BÁSICO") & es_reporte_finalizado(df)
+
+
+def es_especializado_logrado(df: pd.DataFrame) -> pd.Series:
+    return es_paquete(df, "ESPECIALIZADO") & es_reporte_finalizado(df) & es_formacion_finalizada(df)
+
 def _set_cedulas(df: pd.DataFrame, columna: str) -> set:
     return set(df[columna].apply(normalizar_cedula).dropna())
 
@@ -68,7 +110,7 @@ def formados_sin_orientar(general: pd.DataFrame) -> pd.DataFrame:
 def orientados_especializado_sin_formacion(general: pd.DataFrame) -> pd.DataFrame:
     """AE (Reporte) lleno + AH (Paquete)=ESPECIALIZADO + AX (Estado de la formación) vacío = orientado especializado que no está en formación."""
     con_reporte = general["Reporte"].notna() & (general["Reporte"].astype(str).str.strip() != "")
-    es_especializado = general["Paquete"].astype(str).str.strip().str.upper() == "ESPECIALIZADO"
+    es_especializado = es_paquete(general, "ESPECIALIZADO")
     sin_formacion = general["Estado de la formación"].isna() | (general["Estado de la formación"].astype(str).str.strip() == "")
     return general[con_reporte & es_especializado & sin_formacion]
 
@@ -218,17 +260,14 @@ def resumen_looker(general: pd.DataFrame, df_metas: pd.DataFrame, excluir_entreg
     matriculados = (df["Estado CRM"].astype(str).str.strip() == "Matriculado").sum()
     en_proceso = (df[CAMPO_MOMENTO_BACKUP].astype(str).str.strip() == "1.En verificación").sum()
 
-    reporte = df["Reporte"].astype(str).str.strip()
-    paquete = df["Paquete"].astype(str).str.strip().str.upper()
-    finalizados_reporte = reporte.isin(["FINALIZADO", "FINALIZADO PENDIENTE X REMISIÓN"])
+    finalizados_reporte = es_reporte_finalizado(df)
 
     orientados = finalizados_reporte.sum()
-    orientados_basicos = (finalizados_reporte & (paquete == "BÁSICO")).sum()
-    orientados_especializados = (finalizados_reporte & (paquete == "ESPECIALIZADO")).sum()
+    orientados_basicos = es_basico_logrado(df).sum()
+    orientados_especializados = (finalizados_reporte & es_paquete(df, "ESPECIALIZADO")).sum()
 
-    estado_form = df["Estado de la formación"].astype(str).str.strip().str.upper()
-    formados_en_curso = (estado_form == "EN CURSO").sum()
-    finalizados_formacion = estado_form.isin(["FINALIZADO", "CERTIFICADO"]).sum()
+    formados_en_curso = (_col(df, "Estado de la formación") == "EN CURSO").sum()
+    finalizados_formacion = es_especializado_logrado(df).sum()
 
     verificados_monitoreo = (df["Verificación Calidad"].astype(str).str.strip().str.upper() == "TRUE").sum()
     revisados_calidad_orientacion = (df["Fecha Calidad Orientación"].notna() & (df["Fecha Calidad Orientación"].astype(str).str.strip() != "")).sum()
@@ -275,15 +314,13 @@ def tabla_estados(general: pd.DataFrame, enc_basico: pd.DataFrame, enc_esp: pd.D
         enc_basico = enc_basico[enc_basico["CEDULA"].apply(normalizar_cedula).isin(cedulas_filtro)]
         enc_esp = enc_esp[enc_esp["CEDULA"].apply(normalizar_cedula).isin(cedulas_filtro)]
 
-    paquete = df["Paquete"].astype(str).str.strip().str.upper()
-    reporte = df["Reporte"].astype(str).str.strip()
-    finalizados_reporte = reporte.isin(["FINALIZADO", "FINALIZADO PENDIENTE X REMISIÓN"])
-    estado_form = df["Estado de la formación"].astype(str).str.strip().str.upper()
-    finalizados_formacion = estado_form.isin(["FINALIZADO", "CERTIFICADO"])
+    paquete = _col(df, "Paquete")
+    finalizados_reporte = es_reporte_finalizado(df)
+    finalizados_formacion = es_especializado_logrado(df)
     matriculados = df["Estado CRM"].astype(str).str.strip() == "Matriculado"
 
-    paquete_enc_basico = enc_basico["PAQUETE"].astype(str).str.strip().str.upper() if "PAQUETE" in enc_basico.columns else pd.Series(dtype=str)
-    paquete_enc_esp = enc_esp["PAQUETE"].astype(str).str.strip().str.upper() if "PAQUETE" in enc_esp.columns else pd.Series(dtype=str)
+    paquete_enc_basico = _col(enc_basico, "PAQUETE")
+    paquete_enc_esp = _col(enc_esp, "PAQUETE")
 
     if not por_paquete:
         filas = [
@@ -297,13 +334,13 @@ def tabla_estados(general: pd.DataFrame, enc_basico: pd.DataFrame, enc_esp: pd.D
     filas = [
         {
             "Etapa": "Verificación (Matriculados)",
-            "Básico": (matriculados & (paquete == "BÁSICO")).sum(),
+            "Básico": (matriculados & (paquete == "BASICO")).sum(),
             "Especializado": (matriculados & (paquete == "ESPECIALIZADO")).sum(),
             "Total": matriculados.sum(),
         },
         {
             "Etapa": "Orientación",
-            "Básico": (finalizados_reporte & (paquete == "BÁSICO")).sum(),
+            "Básico": (finalizados_reporte & (paquete == "BASICO")).sum(),
             "Especializado": (finalizados_reporte & (paquete == "ESPECIALIZADO")).sum(),
             "Total": finalizados_reporte.sum(),
         },
@@ -315,7 +352,7 @@ def tabla_estados(general: pd.DataFrame, enc_basico: pd.DataFrame, enc_esp: pd.D
         },
         {
             "Etapa": "Encuesta",
-            "Básico": (paquete_enc_basico == "BÁSICO").sum(),
+            "Básico": (paquete_enc_basico == "BASICO").sum(),
             "Especializado": (paquete_enc_esp == "ESPECIALIZADO").sum(),
             "Total": len(enc_basico) + len(enc_esp),
         },
@@ -375,7 +412,7 @@ def calcular_progreso_ruta(cedula_norm: str, general: pd.DataFrame,
     elif paquete == "ESPECIALIZADO":
         ruta = "Especializado"
         etapas = ["Verificación", "Orientación", "Formación", "Remisión", "Mitigación", "Encuesta"]
-    elif paquete == "BÁSICO":
+    elif paquete == "BASICO":  # normalizar_texto quita tildes
         ruta = "Básico"
         etapas = ["Verificación", "Orientación", "Remisión", "Encuesta"]
     else:
@@ -384,12 +421,10 @@ def calcular_progreso_ruta(cedula_norm: str, general: pd.DataFrame,
     completado = {}
     completado["Verificación"] = str(persona.get("Estado CRM", "")).strip() == "Matriculado"
 
-    reporte = str(persona.get("Reporte", "")).strip()
-    completado["Orientación"] = reporte in ["FINALIZADO", "FINALIZADO PENDIENTE X REMISIÓN"]
+    completado["Orientación"] = (normalizar_texto(persona.get("Reporte")) or "") in REPORTES_FINALIZADOS
 
     if "Formación" in etapas:
-        estado_formacion_persona = str(persona.get("Estado de la formación", "")).strip().upper()
-        completado["Formación"] = estado_formacion_persona in ["FINALIZADO", "CERTIFICADO"]
+        completado["Formación"] = (normalizar_texto(persona.get("Estado de la formación")) or "") in FORMACION_FINALIZADA
 
     completado["Remisión"] = normalizar_texto(persona.get("Remitido")) == "SI"
     
@@ -468,13 +503,8 @@ def calcular_prediccion(general: pd.DataFrame) -> dict:
     ))
     dias_habiles_restantes = max(dias_habiles_restantes, 1)  # evita división por cero al final del proyecto
 
-    reporte = general["Reporte"].astype(str).str.strip()
-    paquete = general["Paquete"].astype(str).str.strip().str.upper()
-    estado_form = general["Estado de la formación"].astype(str).str.strip().str.upper()
-
-    finalizados_reporte = reporte.isin(["FINALIZADO", "FINALIZADO PENDIENTE X REMISIÓN"])
-    avance_basico = (finalizados_reporte & (paquete == "BÁSICO")).sum()
-    avance_especializado = estado_form.isin(["FINALIZADO", "CERTIFICADO"]).sum()
+    avance_basico = int(es_basico_logrado(general).sum())
+    avance_especializado = int(es_especializado_logrado(general).sum())
     avance_total = avance_basico + avance_especializado
 
     def construir(real, meta):
@@ -577,7 +607,7 @@ def html_tarjetas_ritmo(pred: dict) -> str:
 def aplicar_filtros_generales(df: pd.DataFrame, paquete=None, estado=None, evento=None, hito=None) -> pd.DataFrame:
     resultado = df.copy()
     if paquete and paquete != "Todos":
-        resultado = resultado[resultado["Paquete"] == paquete]
+        resultado = resultado[es_paquete(resultado, paquete)]
     if estado and estado != "Todos":
         resultado = resultado[resultado["Momento del proceso"] == estado]
     if evento and evento != "Todos":
@@ -740,16 +770,22 @@ def tabla_editable_documentos(matriz: pd.DataFrame) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 def datos_formacion_apilada(general: pd.DataFrame) -> pd.DataFrame:
-    estado_form = general["Estado de la formación"].astype(str).str.strip().str.upper()
-    conteo = estado_form[estado_form.isin(["FINALIZADO", "CERTIFICADO", "EN CURSO"])].value_counts()
+    # Finalizado/Certificado solo cuenta a quien cumple el criterio oficial (mismo número de la cabecera).
+    estado_form = _col(general, "Estado de la formación")
+    valido = es_especializado_logrado(general) | (estado_form == "EN CURSO")
+    conteo = estado_form[valido].value_counts()
     df = pd.DataFrame([{"Formación": "Formación", "Estado": estado, "Cantidad": int(cant)} for estado, cant in conteo.items()])
     return df
 
 def serie_orientacion_filtrada(general: pd.DataFrame, granularidad: str = "Semanal") -> pd.DataFrame:
     """Solo cuenta fechas de personas cuyo Reporte es FINALIZADO/FINALIZADO PENDIENTE X REMISIÓN (mismo criterio del KPI)."""
-    reporte = general["Reporte"].astype(str).str.strip()
-    filtrado = general[reporte.isin(["FINALIZADO", "FINALIZADO PENDIENTE X REMISIÓN"])]
+    filtrado = general[es_reporte_finalizado(general)]
     return serie_temporal(filtrado, "Fecha Orientación", granularidad)
+
+
+def serie_formacion_filtrada(general: pd.DataFrame, granularidad: str = "Semanal") -> pd.DataFrame:
+    """Fechas de finalización solo de quienes cumplen el criterio de Especializado logrado (mismo criterio del KPI)."""
+    return serie_temporal(general[es_especializado_logrado(general)], "Fecha finalización", granularidad)
 
 # =========================================================
 # Seguimiento Individual

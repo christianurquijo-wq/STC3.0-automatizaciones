@@ -15,7 +15,7 @@ from analitica import carga_personalizada
 from cargar_datos import cargar_fuente
 from normalizador import normalizar_columna_cedula
 from column_mapping import CAMPO_ENTREGADO, MAPEO_CEDULA
-from analitica import serie_orientacion_filtrada
+from analitica import serie_orientacion_filtrada, serie_formacion_filtrada
 import sys, os
 # oct-2026: app.py vive en Dashboard/ y python_agente/ en la raiz del repo -> subir un nivel
 _RUTA_PYTHON_AGENTE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "python_agente")
@@ -580,7 +580,7 @@ with tab4:
                 series_reporte = {
                     "verificacion": serie_temporal(general_filtrado, "Fecha", "Semanal"),
                     "orientacion": serie_orientacion_filtrada(general_filtrado, "Semanal"),
-                    "formacion": serie_temporal(general_filtrado, "Fecha finalización", "Semanal"),
+                    "formacion": serie_formacion_filtrada(general_filtrado, "Semanal"),
                 }
 
                 pred_para_reporte = calcular_prediccion(general_filtrado)
@@ -662,7 +662,7 @@ with tab4:
         st.markdown("#### Formación")
         ver_semanal_form = st.toggle("📅 Gráfica por semanas", value=False, key="toggle_form")
         granularidad_form = "Semanal" if ver_semanal_form else "Diaria"
-        serie_formacion = serie_temporal(general_filtrado, "Fecha finalización", granularidad_form)
+        serie_formacion = serie_formacion_filtrada(general_filtrado, granularidad_form)
         fig_f = px.line(serie_formacion, x="Fecha", y="Cantidad", markers=True, text="Cantidad")
         fig_f.update_traces(line_color="#292929", textposition="top center")
         fig_f.update_layout(height=350)

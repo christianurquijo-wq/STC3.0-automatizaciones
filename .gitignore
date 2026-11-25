@@ -46,3 +46,5 @@ STC3.0-bot/
 .vscode/
 # Registro y respaldos del túnel de PDF (Evidencias_remisiones/tunel_pdf.py)
 logs/
+
+Seguimiento_general/conciliacion_cifras_*.xlsx
