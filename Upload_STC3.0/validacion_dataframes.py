@@ -13,23 +13,16 @@ def validar_y_comparar(nombre_base_sheets, df, client_bq, table_ref):
     columnas_df = list(df.columns)
     errores = False
 
-    if len(columnas_bq) != len(columnas_df):
-        print(f" Diferencia en la CANTIDAD de columnas.")
-        print(f" BigQuery tiene: {len(columnas_bq)} columnas")
-        print(f" Tu CSV/DataFrame tiene: {len(columnas_df)} columnas")
-        errores = True
+    faltan = set(columnas_bq) - set(columnas_df)
+    sobran = set(columnas_df) - set(columnas_bq)
 
-    if sorted(columnas_bq) != sorted(columnas_df):
-        print("Los nombres de las columnas no coinciden con exactitud")
-        
-        faltan = set(columnas_bq) - set(columnas_df)
-        sobran = set(columnas_df) - set(columnas_bq)
-
-        if faltan:
-            print(f"La base de datos de Google Sheets ({nombre_base_sheets}) no tiene las siguientes columnas: {list(faltan)}")
-        if sobran:
-            print(f"La base de datos de Google Sheets ({nombre_base_sheets}) tiene las siguientes columnas que no son de BQ: {list(sobran)}")
-        
+    # nov-2026: una columna NUEVA en la hoja (p. ej. «Último registro en CRM») no detiene la carga: la tabla se
+    # reemplaza (WRITE_TRUNCATE + autodetect) y la columna se agrega. Lo que sí detiene es que FALTE una columna que
+    # BigQuery tiene, porque el tablero de Streamlit la puede estar leyendo.
+    if sobran:
+        print(f"Columnas nuevas en {nombre_base_sheets} que se agregarán a BigQuery: {sorted(sobran)}")
+    if faltan:
+        print(f"La base de datos de Google Sheets ({nombre_base_sheets}) no tiene las siguientes columnas: {list(faltan)}")
         errores = True
 
     if errores:

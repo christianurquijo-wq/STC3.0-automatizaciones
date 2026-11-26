@@ -197,9 +197,16 @@ def leer_fuentes(gc: gspread.Client, seg: gspread.Spreadsheet) -> tuple[dict, pd
     return fuentes, remisiones, avisos, reportes
 
 
+def _ultima_columna(seg: gspread.Spreadsheet) -> str:
+    """Última columna que existe en la hoja hasta la del script (BU). Si la hoja aún no tiene la columna nueva, leer
+    hasta BU daría «exceeds grid limits»: se lee hasta donde llega y lo demás queda vacío."""
+    ws = reintentos(lambda: seg.worksheet(HOJA))
+    return M.get_column_letter(min(ws.col_count, len(M.ENCABEZADOS)))
+
+
 def leer_base(seg: gspread.Spreadsheet) -> pd.DataFrame:
     ancho = len(M.ENCABEZADOS)
-    ultima = M.get_column_letter(ancho)
+    ultima = _ultima_columna(seg)
     filas = leer_rangos(seg, [f"{HOJA}!A{FILA_DATOS}:{ultima}"])[0]
     df = pd.DataFrame([list(r[:ancho]) + [""] * (ancho - len(r[:ancho])) for r in filas],
                       columns=[M.get_column_letter(i + 1) for i in range(ancho)]).fillna("")
@@ -263,14 +270,17 @@ def _plano(t) -> str:
 def validar_encabezados(seg: gspread.Spreadsheet) -> None:
     """Modo real: el script escribe por POSICIÓN (columna B, C, …). Si alguien insertó o movió una columna, la fila
     4 ya no coincide y se detiene antes de escribir, para no poner datos en la columna equivocada."""
-    fila4 = leer_rangos(seg, [f"{HOJA}!A4:{M.get_column_letter(len(M.ENCABEZADOS))}4"])[0]
+    fila4 = leer_rangos(seg, [f"{HOJA}!A4:{_ultima_columna(seg)}4"])[0]
     actual = (fila4[0] if fila4 else []) + [""] * len(M.ENCABEZADOS)
+    ultima = len(M.ENCABEZADOS) - 1
+    if not str(actual[ultima]).strip():  # columna BU nueva (nov-2026): el script escribe su encabezado
+        actual[ultima] = M.ENCABEZADOS[ultima]
     distintos = [f"{M.get_column_letter(i + 1)}: hoja «{a}» ≠ esperado «{e}»"
                  for i, (a, e) in enumerate(zip(actual, M.ENCABEZADOS)) if _plano(a) != _plano(e)]
     if distintos:
         sys.exit("Los encabezados de la fila 4 no coinciden con las columnas que escribe el script; no se escribió "
                  "nada.\n  " + "\n  ".join(distintos[:15]))
-    log("Encabezados de la fila 4 verificados (A:BT)")
+    log(f"Encabezados de la fila 4 verificados (A:{M.get_column_letter(len(M.ENCABEZADOS))})")
 
 
 def escribir_auditoria(seg: gspread.Spreadsheet, aud: pd.DataFrame) -> None:
@@ -338,8 +348,9 @@ def escribir_real(seg: gspread.Spreadsheet, tabla: pd.DataFrame, n_base: int, av
                   ) -> None:
     ws = seg.worksheet(HOJA)
     ultima_fila = FILA_DATOS + len(tabla) - 1
-    if ws.row_count < ultima_fila:
-        reintentos(lambda: ws.resize(rows=ultima_fila + 50))
+    if ws.row_count < ultima_fila or ws.col_count < len(M.ENCABEZADOS):
+        reintentos(lambda: ws.resize(rows=max(ws.row_count, ultima_fila + 50), cols=max(ws.col_count,
+                                                                                      len(M.ENCABEZADOS))))
     datos = []
     for ini, fin in bloques_calculados():
         cols = [M.get_column_letter(i) for i in range(M.letra(ini) + 1, M.letra(fin) + 2)]
@@ -348,6 +359,9 @@ def escribir_real(seg: gspread.Spreadsheet, tabla: pd.DataFrame, n_base: int, av
     if len(tabla) > n_base:  # cédulas nuevas: también su columna F (manual) para que queden en el seguimiento
         datos.append({"range": f"{HOJA}!F{FILA_DATOS + n_base}:F{ultima_fila}",
                       "values": [[v] for v in tabla["F"].iloc[n_base:]]})
+    # Encabezado de la columna nueva BU (si la hoja aún no lo tiene, queda escrito; si ya está, se reescribe igual)
+    ult = M.get_column_letter(len(M.ENCABEZADOS))
+    datos.append({"range": f"{HOJA}!{ult}4", "values": [[M.ENCABEZADOS[-1]]]})
     # Fila 1: C1 y G1 tenían fórmulas de alerta (cédulas repetidas / CONTROL DE FALTANTES); ahora las escribe el script.
     datos.append({"range": f"{HOJA}!C1", "values": [[avisos_fila1[0]]]})
     datos.append({"range": f"{HOJA}!G1", "values": [[avisos_fila1[1]]]})

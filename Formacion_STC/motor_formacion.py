@@ -28,7 +28,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Seguimiento_general"))
-from motor_seguimiento import get_column_letter, letra, norm_doc  # noqa: E402
+from motor_seguimiento import get_column_letter, indice_crm, letra, norm_doc  # noqa: E402
 
 ZONA = "America/Bogota"
 
@@ -167,6 +167,21 @@ def entero_si_numero(v):
 
 
 # ------------------------------------------------------------------ cálculo
+CRM_LETRAS = {"Fecha de Alta": "A", "Estudiante": "B", "Documento": "C", "Telefono": "D", "Correo": "E",
+              "Programa": "F", "ID CRM": "G", "Asesor": "H", "Adnetwork": "I", "Estado": "J", "Campaña": "K",
+              "Baja": "L"}
+
+
+def crm_original(crm: pd.DataFrame | None) -> pd.DataFrame | None:
+    """REPORTE CRM (columnas por nombre) → una fila por documento con su registro original (ver indice_crm)."""
+    if crm is None or crm.empty or "Documento" not in crm:
+        return crm
+    letras = crm.rename(columns=CRM_LETRAS)
+    idx = indice_crm(letras)
+    inv = {v: k for k, v in CRM_LETRAS.items()}
+    return idx.reset_index(drop=True).rename(columns=inv)
+
+
 def calcular(base: pd.DataFrame, f: dict[str, pd.DataFrame], hoy: pd.Timestamp,
              tipo_doc: pd.DataFrame | None = None, observaciones: dict[str, str] | None = None) -> pd.DataFrame:
     """base: CONSOLIDADO actual con columnas por letra (A … BI). Devuelve la tabla completa (mismas letras) con las
@@ -189,7 +204,9 @@ def calcular(base: pd.DataFrame, f: dict[str, pd.DataFrame], hoy: pd.Timestamp,
     out["A"] = serie(cuenta.get(d, "") if d else "" for d in doc)
 
     # B, C, H, I · REPORTE CRM por documento
-    crm = f.get("REPORTE CRM")
+    # Del registro ORIGINAL de cada persona en el CRM (el «Matriculado» más antiguo), no del más reciente: igual que el
+    # Seguimiento General (motor_seguimiento.indice_crm).
+    crm = crm_original(f.get("REPORTE CRM"))
     kc = llaves(crm, "Documento")
     for destino, origen in (("B", "Adnetwork"), ("C", "ID CRM"), ("H", "Telefono"), ("I", "Correo")):
         m = primero(kc, col(crm, origen))

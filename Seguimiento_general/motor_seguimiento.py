@@ -43,7 +43,7 @@ ENCABEZADOS = [
     "Fecha clases", "Fecha finalización", "Progreso", "Certificado", "Paquete de pantallazos", "Bono enviado",
     "Momento del proceso", "Plataforma STC", "Resultado del VRD", "Hito", "Mes de entrega", "Encuesta",
     "Tipo de paquete reportado", "Sexo Asignado al nacer", "Edad", "Sin gestión", "En verificación", "Verificado",
-    "Orientado", "Formado", "Certificado (1)", "Momento del proceso (Back UP)",
+    "Orientado", "Formado", "Certificado (1)", "Momento del proceso (Back UP)", "Último registro en CRM",
 ]
 # Columnas que diligencia el equipo a mano: el script nunca las sobrescribe.
 MANUALES = ["A", "D", "F", "AI", "AP", "AQ", "AR", "AV", "BD", "BG", "BL", "BM"]
@@ -113,6 +113,42 @@ def num(v) -> float:
 
 
 # ------------------------------------------------------------------ cálculo
+def indice_crm(crm: pd.DataFrame) -> pd.DataFrame:
+    """Reporte CRM (columnas por letra: A fecha de alta, C documento, J estado) → una fila por documento con su
+    REGISTRO ORIGINAL. CORRIGE (nov-2026): la consulta viene del más reciente al más antiguo y se tomaba la primera
+    fila; si a una persona ya matriculada se le creaba otro registro (p. ej. «Prospecto» del 26/11), el seguimiento
+    mostraba esa fecha de alta y ese estado. Ahora: los datos salen del registro «Matriculado» más antiguo (si no
+    tiene, del más antiguo); la fecha de alta (A) es la más antigua de la persona, y «_ultima» trae la fecha del
+    registro más reciente cuando es posterior (columna BU «Último registro en CRM»). La baja (L) sí sale del
+    registro más reciente: es el estado actual del contacto."""
+    if crm.empty or "C" not in crm:
+        return pd.DataFrame()
+    fechas = crm["A"] if "A" in crm else pd.Series(None, index=crm.index, dtype=object)
+    d = crm.assign(_k=crm["C"].map(norm_doc), _f=pd.to_datetime(fechas, errors="coerce", dayfirst=False),
+                   _m=crm.get("J", pd.Series("", index=crm.index)).astype(str).str.strip().str.upper()
+                   .eq("MATRICULADO"), _i=range(len(crm)))
+    d = d[d["_k"] != ""]
+    if d.empty:
+        return pd.DataFrame()
+    g = d.groupby("_k")["_f"]
+    primera, ultima, cuantas = g.min(), g.max(), g.nunique()
+    orden = d.sort_values(["_k", "_m", "_f", "_i"], ascending=[True, False, True, True], na_position="last")
+    elegido = orden.drop_duplicates("_k").set_index("_k")
+    con_fecha = primera.reindex(elegido.index).notna()
+    if "A" not in elegido:
+        elegido["A"] = ""
+    elegido.loc[con_fecha, "A"] = primera.reindex(elegido.index)[con_fecha].dt.strftime("%Y-%m-%d")
+    ult = ultima.reindex(elegido.index)
+    hay_otra = (cuantas.reindex(elegido.index) > 1) & ult.notna()
+    # La baja (L) es el estado ACTUAL del contacto: sale del registro más reciente, como antes.
+    if "L" in d:
+        reciente = d.sort_values(["_k", "_f", "_i"], ascending=[True, False, True], na_position="last")
+        elegido["L"] = reciente.drop_duplicates("_k").set_index("_k")["L"].reindex(elegido.index)
+    elegido["_ultima"] = ""
+    elegido.loc[hay_otra, "_ultima"] = ult[hay_otra].dt.strftime("%Y-%m-%d")
+    return elegido.drop(columns=["_f", "_m", "_i"])
+
+
 def calcular(base: pd.DataFrame, fuentes: dict[str, pd.DataFrame], remisiones: pd.DataFrame | None,
              hitos_pago: dict[str, str] | None = None) -> pd.DataFrame:
     """base: SEGUIMIENTO GENERAL actual (columnas por letra, desde la fila 5). Devuelve la misma tabla con las
@@ -124,7 +160,7 @@ def calcular(base: pd.DataFrame, fuentes: dict[str, pd.DataFrame], remisiones: p
     doc = out["F"].map(norm_doc)
 
     ver = indice(fuentes["Verificación IMPORT"], "G")
-    crm = indice(fuentes["Reporte CRM"], "C")
+    crm = indice_crm(fuentes["Reporte CRM"])
     ori = indice(fuentes["Orientación IMPORT"], "L")
     form = indice(fuentes["Formación Import"], "G")
     sis = indice(fuentes["Reporte SIS"], "C", normalizar=norm_doc)          # llave: ID CRM
@@ -142,6 +178,7 @@ def calcular(base: pd.DataFrame, fuentes: dict[str, pd.DataFrame], remisiones: p
     # N:U · CRM  (Verificador=Asesor, ID CRM, Fecha de alta, Nombre, Correo, Teléfono, Ad Network, Estado)
     for destino, origen in zip("N O P Q R S T U".split(), "H G A B E D I J".split()):
         out[destino] = buscar(doc, crm, origen)
+    out["BU"] = buscar(doc, crm, "_ultima")  # fecha del registro más reciente en el CRM, si es otro
 
     # E · tipo de base. CORRIGE (nov-2026): quien está en «Base JCO» toma su cohorte de esa pestaña (JCO, JCO_II,
     # JCO_3, JCO_4), sin importar el Ad Network del CRM. Antes salía en blanco para 698 personas de JCO_II (el CRM
