@@ -153,3 +153,11 @@ def test_avance_toma_el_dato_mayor_y_revision():
     rev = F.revision_multigrupo(out, f)
     assert len(rev) == 3 and set(rev["¿El dato mayor es de otro curso?"]) == {"Sí - revisar"}
     assert rev.loc[rev["Group_id en el SIS"] == "G7", "¿Es el dato mayor?"].item() == "Sí"
+
+
+def test_fecha_fin_solo_para_terminados():
+    out = F.calcular(base(111, 222), fuentes(), HOY)
+    assert out.iloc[0]["O"] == "FINALIZADO" and out.iloc[0]["Y"] == "20/10/2026"
+    assert out.iloc[1]["O"] == "INSCRITO" and out.iloc[1]["Y"] == ""
+    en_curso = F.calcular(base(111), fuentes(asist=100, prog_us=40.0, logs_extra=False), HOY).iloc[0]
+    assert en_curso["O"] == "EN CURSO" and en_curso["Y"] == ""                  # asistió pero no terminó

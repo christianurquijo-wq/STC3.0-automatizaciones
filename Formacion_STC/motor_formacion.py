@@ -382,17 +382,16 @@ def calcular(base: pd.DataFrame, f: dict[str, pd.DataFrame], hoy: pd.Timestamp,
 
     # Y · fecha de finalización
     def fin(d, s, est):
-        if not s:
-            return "" if not d else "--"
+        # Solo quien terminó: FINALIZADO (asistencia 100 % y progreso 100 %) o CERTIFICADO. A los demás, vacío.
+        if not d or est not in ("FINALIZADO", "CERTIFICADO"):
+            return ""
         if d in FECHA_FIN_FIJA:
             return FECHA_FIN_FIJA[d]
-        cands = [f_asis.get(s), f_user.get(s)]
-        if est in ("FINALIZADO", "CERTIFICADO"):
-            cands.append(f_logs.get(s))
+        cands = [f_asis.get(s), f_user.get(s), f_logs.get(s)] if s else []
         if est == "CERTIFICADO":
             cands.append(fecha(c_n.get(d)))
         cands = [c for c in cands if c is not None]
-        return ddmmaaaa(max(cands)) if cands else "--"
+        return ddmmaaaa(max(cands)) if cands else ""
 
     out["Y"] = serie(fin(d, s, e) for d, s, e in zip(doc, id_sis, out["O"]))
 
@@ -402,13 +401,14 @@ def calcular(base: pd.DataFrame, f: dict[str, pd.DataFrame], hoy: pd.Timestamp,
     difs = [(b - a).days for a, b in zip(ini, ffin) if a is not None and b is not None and b > a]
     prom = sum(difs) / len(difs) if difs else 0
 
-    def verf(est, x, y, a):
+    def verf(est, x, y, a):  # noqa: ARG001 -- y, a: firma de la fórmula original
         if vacio(est) or x == "--":
             return ""
         if est in ("CERTIFICADO", "FINALIZADO"):
             return "*"
-        if y == "" and a is not None:
-            return "Deserción" if max(0, (hoy - a).days) > prom else "OK"
+        # La fórmula original solo evaluaba deserción cuando la fecha de fin venía vacía, cosa que nunca pasaba
+        # (llegaba «--»): en la práctica siempre daba «*». Se conserva ese resultado ahora que Y queda vacía para
+        # quien no ha terminado.
         return "*"
 
     out["Z"] = serie(verf(e, x, y, a) for e, x, y, a in zip(out["O"], out["X"], out["Y"], ini))
