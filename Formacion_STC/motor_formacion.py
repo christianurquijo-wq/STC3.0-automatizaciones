@@ -286,19 +286,22 @@ def calcular(base: pd.DataFrame, f: dict[str, pd.DataFrame], hoy: pd.Timestamp,
     f_user = primera_fecha(u_k, col(us, "PROGRESO"),
                            [fecha(v) for v in col(us, "FECHA_FINALIZACION_ASINCRONICA")])
 
-    # AD / AH · avance en plataforma
-    u_g = [str(v or "") for v in col(us, "GROUP_ID")]
-    prog_us = primero([f"{k}|{g}" for k, g in zip(u_k, u_g)], col(us, "PROGRESO"))
-    # LOGS viene ordenado por FECHA_LOG_PROGRAMA descendente: la primera fila por usuario es su último log
-    prog_log = primero(l_k, col(logs, "PROGRESO_PROGRAMA"))
+    # AD / AH · avance en plataforma: el DATO MAYOR entre todos los grupos del participante (si está inscrito en
+    # varios grupos o cursos, se toma su mejor progreso; los casos quedan en la pestaña «Revisión multigrupo»).
+    us_p = pd.Series([numero(v) for v in col(us, "PROGRESO")], dtype=float)
+    max_us = us_p.groupby(pd.Series(u_k)).max().to_dict() if len(u_k) else {}
+    log_p = pd.Series([numero(v) for v in col(logs, "PROGRESO_PROGRAMA")], dtype=float)
+    max_log = log_p.groupby(pd.Series(l_k)).max().to_dict() if len(l_k) else {}
     ad, ah = [], []
-    for s, g, h in zip(id_sis, grupo, out["L"]):
+    for s, h in zip(id_sis, out["L"]):
         if not h or h == "" or not s:
             ad.append("")
             ah.append("")
             continue
-        q = numero(prog_us.get(f"{s}|{g}")) if g else None
-        w = numero(prog_log.get(s))
+        q = max_us.get(s)
+        q = None if q is None or pd.isna(q) else q
+        w = max_log.get(s)
+        w = None if w is None or pd.isna(w) else w
         ad.append("" if q is None and w is None else max(q or 0, w or 0) / 100)
         ah.append("" if q is None else q / 100)
     out["AD"] = serie(ad)
@@ -599,6 +602,47 @@ def sis_sin_seguimiento(sis: pd.DataFrame, sg: pd.DataFrame | None, base: pd.Dat
                       r.get("Estudiante"), r.get("Correo"), r.get("Telefono"), r.get("Paquete"), r.get("Programa"),
                       r.get("Group_id"), r.get("Fecha de Matrícula"), r.get("Estado Académico"), r.get("Principal")])
     return pd.DataFrame(filas, columns=COLUMNAS_SIS_SIN)
+
+
+COLUMNAS_REVISION = ["Documento", "Nombre", "ID SIS", "Grupo asignado (L)", "Curso asignado (M)",
+                     "Group_id en el SIS", "Carril", "Curso del grupo", "Progreso (%)", "¿Es el dato mayor?",
+                     "¿Es el grupo asignado?", "¿El dato mayor es de otro curso?", "% avance plat (AD)",
+                     "Estado de la formación"]
+
+
+def revision_multigrupo(out: pd.DataFrame, f: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Una fila por participante × grupo para quienes tienen estadísticas en MÁS de un grupo del SIS
+    (USER_STATISTICS): de qué grupo salió el dato mayor que quedó en AD/AH y si es de otro curso que el asignado."""
+    us = f.get("USER_STATISTICS")
+    if us is None or us.empty:
+        return pd.DataFrame(columns=COLUMNAS_REVISION)
+    d = pd.DataFrame({"k": llaves(us, "ID_SIS"), "grupo": col(us, "GROUP_ID").astype(str).tolist(),
+                      "carril": col(us, "CARRIL").tolist(), "curso": col(us, "PROGRAMA").tolist(),
+                      "p": [numero(v) for v in col(us, "PROGRESO")]})
+    d = d[d["k"] != ""].drop_duplicates(["k", "grupo"])
+    varios = d.groupby("k")["grupo"].transform("nunique") > 1
+    d = d[varios]
+    if d.empty:
+        return pd.DataFrame(columns=COLUMNAS_REVISION)
+    o = out[out["G"].map(norm_doc) != ""].copy()
+    o["k"] = [norm_doc(v) if v not in ("", "--") else "" for v in o["D"]]
+    o = o[o["k"].isin(set(d["k"]))].drop_duplicates("k")
+    d = d.merge(o[["k", "G", "E", "L", "M", "AD", "O"]], on="k", how="inner")
+    d["mayor"] = d["p"].eq(d.groupby("k")["p"].transform("max"))
+    curso_mayor = d[d["mayor"]].groupby("k")["curso"].agg(lambda c: {plano(x).replace("40H", "").replace("20H", "")
+                                                                       .strip() for x in c})
+    otro = {k: (plano(m).strip() not in cursos) for k, m, cursos in
+            ((k, d.loc[d["k"] == k, "M"].iloc[0], c) for k, c in curso_mayor.items())}
+    filas = pd.DataFrame({
+        "Documento": d["G"].map(entero_si_numero), "Nombre": d["E"], "ID SIS": d["k"].map(entero_si_numero),
+        "Grupo asignado (L)": d["L"], "Curso asignado (M)": d["M"], "Group_id en el SIS": d["grupo"],
+        "Carril": d["carril"], "Curso del grupo": d["curso"], "Progreso (%)": d["p"],
+        "¿Es el dato mayor?": d["mayor"].map({True: "Sí", False: "No"}),
+        "¿Es el grupo asignado?": (d["grupo"] == d["L"].astype(str)).map({True: "Sí", False: "No"}),
+        "¿El dato mayor es de otro curso?": d["k"].map(otro).map({True: "Sí - revisar", False: "No"}),
+        "% avance plat (AD)": d["AD"], "Estado de la formación": d["O"]})
+    return filas.sort_values(["¿El dato mayor es de otro curso?", "Documento", "Progreso (%)"],
+                             ascending=[False, True, False]).reset_index(drop=True)
 
 
 def depurar(base: pd.DataFrame, vigentes: set[str], estados: pd.Series | None = None

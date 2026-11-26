@@ -139,3 +139,17 @@ def test_limpieza_conserva_terminados():
     assert queda["G"].tolist() == [1000111, 1000333] and salen["G"].tolist() == [1000222]
     out = F.calcular(queda, fuentes(), HOY, observaciones={"1000111": "Baja en el CRM (6.Baja)"})
     assert out.iloc[0]["BJ"] == "Baja en el CRM (6.Baja)" and out.iloc[1]["BJ"] == ""
+
+
+def test_avance_toma_el_dato_mayor_y_revision():
+    f = fuentes()
+    f["USER_STATISTICS"] = df([["10", "G1", 40.0, "", "Servicio al cliente 40H", "Servicio al cliente 40H - 1"],
+                               ["10", "G9", 90.0, "", "Servicio al cliente 40H", "Servicio al cliente 40H - 2"],
+                               ["10", "G7", 100.0, "", "Herramientas ofimáticas 40H", "Herramientas 40H - 1"]],
+                              ["ID_SIS", "GROUP_ID", "PROGRESO", "FECHA_FINALIZACION_ASINCRONICA", "PROGRAMA", "CARRIL"])
+    f["LOGS"] = df([], ["ID_SIS", "PROGRESO_PROGRAMA", "FECHA_LOG_PROGRAMA"])
+    out = F.calcular(base(111), f, HOY)
+    assert out.iloc[0]["AD"] == 1.0 and out.iloc[0]["AH"] == 1.0          # el mayor, aunque no sea del grupo G1
+    rev = F.revision_multigrupo(out, f)
+    assert len(rev) == 3 and set(rev["¿El dato mayor es de otro curso?"]) == {"Sí - revisar"}
+    assert rev.loc[rev["Group_id en el SIS"] == "G7", "¿Es el dato mayor?"].item() == "Sí"

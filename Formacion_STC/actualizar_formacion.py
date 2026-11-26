@@ -62,6 +62,7 @@ HOJA = "CONSOLIDADO"
 HOJA_PRUEBA = "CONSOLIDADO (script)"
 HOJA_CONTROL = "Control script"
 HOJA_SIS_SIN = "SIS sin seguimiento"
+HOJA_REVISION = "Revisión multigrupo"
 HOJA_RETIRADOS = "Retirados de CONSOLIDADO"
 HOJA_RETIRADOS_PRUEBA = "Retirados (prueba)"
 MAX_RETIRO = 0.30  # si saldría más del 30 % de CONSOLIDADO, se detiene (seguramente falló la lectura del SG)
@@ -511,7 +512,7 @@ def main(argv: list[str] | None = None) -> None:
     log(f"Estado de la formación: {estados}")
 
     # Antes de escribir: ¿hay rangos protegidos que la cuenta de servicio no puede editar?
-    a_escribir = {HOJA_CONTROL, HOJA_SIS_SIN} | ({HOJA_PRUEBA, HOJA_RETIRADOS_PRUEBA} if args.prueba else
+    a_escribir = {HOJA_CONTROL, HOJA_SIS_SIN, HOJA_REVISION} | ({HOJA_PRUEBA, HOJA_RETIRADOS_PRUEBA} if args.prueba else
                                                  {HOJA, HOJA_RETIRADOS, "SESIONES", "REPORTE CRM", "REPORTE SIS",
                                                   *(n for n in SQL)})
     bloqueos = protecciones_bloqueantes(libro, a_escribir)
@@ -550,7 +551,19 @@ def main(argv: list[str] | None = None) -> None:
                    f"{pd.Timestamp.now(tz=F.ZONA):%Y-%m-%d %H:%M} · {len(sin)} personas")
     log(f"{HOJA_SIS_SIN}: {len(sin)} usuarios especializados del SIS sin seguimiento")
 
-    # 6. Control
+    # 6. Revisión de participantes con varios grupos en el SIS (AD/AH toman el dato mayor)
+    rev = F.revision_multigrupo(out, fuentes)
+    otro_curso = int(rev.loc[rev["¿El dato mayor es de otro curso?"].str.startswith("Sí"), "Documento"].nunique()) \
+        if len(rev) else 0
+    escribir_tabla(libro, HOJA_REVISION, rev,
+                   f"Participantes con estadísticas en más de un grupo del SIS: % AVANCE PLAT (AD) y VERIF (AH) toman "
+                   f"el progreso MAYOR entre sus grupos · {pd.Timestamp.now(tz=F.ZONA):%Y-%m-%d %H:%M} · "
+                   f"{rev['Documento'].nunique() if len(rev) else 0} personas, {otro_curso} con el dato mayor en otro "
+                   f"curso (revisar)")
+    log(f"{HOJA_REVISION}: {rev['Documento'].nunique() if len(rev) else 0} personas con varios grupos · "
+        f"{otro_curso} con el dato mayor en otro curso")
+
+    # 7. Control
     casos = [[F.norm_doc(d), ("Se retiraría" if args.prueba else "Retirada") + f" de CONSOLIDADO · {m}",
               estado_previo.get(F.norm_doc(d)) or "—"] for d, m in zip(salen["G"], motivos)]
     retiradas = {F.norm_doc(d) for d in salen["G"]}
@@ -574,6 +587,8 @@ def main(argv: list[str] | None = None) -> None:
                (["Retiradas en esta limpieza", f"{len(salen)} (pestaña «{HOJA_RETIRADOS_PRUEBA if args.prueba else HOJA_RETIRADOS}»)"]
                 if args.limpiar else ["No vigentes en CONSOLIDADO (no se retiran)", len(no_vigentes)]),
                ["No vigentes que terminaron formación (se quedan, observación en BJ)", terminados],
+               ["Varios grupos en el SIS (dato mayor)", f"{rev['Documento'].nunique() if len(rev) else 0} personas · "
+                f"{otro_curso} con el dato mayor en otro curso (pestaña «{HOJA_REVISION}»)"],
                ["Especializados del SIS sin seguimiento", f"{len(sin)} (pestaña «{HOJA_SIS_SIN}»)"],
                ["Estados", " · ".join(f"{k}: {v}" for k, v in estados.items())],
                ["Avisos", " | ".join(avisos) or "—"]]
