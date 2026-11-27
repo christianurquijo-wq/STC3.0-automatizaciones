@@ -20,10 +20,11 @@ def letras(filas):
                         columns=[F.get_column_letter(i + 1) for i in range(ancho)])
 
 
-def fila_sg(doc, curso="SERVICIO AL CLIENTE", orientacion=46296, mes=46296):
+def fila_sg(doc, curso="SERVICIO AL CLIENTE", orientacion=46296, mes=46296, hito="Pago 2.1"):
     f = [""] * (F.letra("BT") + 1)
     f[F.letra("F")], f[F.letra("AA")], f[F.letra("Q")] = doc, "ANA PEREZ", "Ana Perez Gil"
     f[F.letra("AG")], f[F.letra("AT")], f[F.letra("BI")] = orientacion, curso, mes   # 46296 = 01/10/2026
+    f[F.letra("BH")] = hito   # «Hito» del SG: pago en que la SDDE aprobó a la persona
     return f
 
 
@@ -65,7 +66,7 @@ def test_estados_y_columnas_clave():
     assert a["Y"] == "20/10/2026"                      # la fecha más reciente entre asistencia, US y logs
     assert a["P"] == "FINALIZADO" and a["AS"] == 6
     assert a["AQ"] == 2 and a["AR"] == 2.0             # solo filas con LOG_ID
-    assert a["AU"] == "PAQUETE 3.1" and a["V"] == "SERVICIO AL CLIENTE" and a["W"] is True
+    assert a["AU"] == "Pago 2.1" and a["V"] == "SERVICIO AL CLIENTE" and a["W"] is True
     assert b["O"] == "INSCRITO" and b["AQ"] == 0
     assert (b["P"], b["Q"], b["R"], b["U"]) == ("S9", 4, "meet/x", True)   # sesión de hoy de su grupo
     assert all(vacia[c] == "" for c in F.CALCULADAS)
@@ -161,3 +162,13 @@ def test_fecha_fin_solo_para_terminados():
     assert out.iloc[1]["O"] == "INSCRITO" and out.iloc[1]["Y"] == ""
     en_curso = F.calcular(base(111), fuentes(asist=100, prog_us=40.0, logs_extra=False), HOY).iloc[0]
     assert en_curso["O"] == "EN CURSO" and en_curso["Y"] == ""                  # asistió pero no terminó
+
+
+def test_paquete_de_pago_es_el_hito_del_sg():
+    """AU = «Hito» (BH) del Seguimiento General: «Pago N», «En ruta» o vacío; vacío si la cédula no está en el SG."""
+    f = fuentes()
+    f["SG"] = letras([fila_sg("111", hito="Pago 3"), fila_sg("222", "MARKETING_DIGITAL", hito="En ruta")])
+    out = F.calcular(base(111, 222, 333), f, HOY)
+    assert out["AU"].tolist() == ["Pago 3", "En ruta", ""]
+    f["SG"] = letras([fila_sg("111", hito=""), fila_sg("222", "MARKETING_DIGITAL", hito=None)])
+    assert F.calcular(base(111, 222), f, HOY)["AU"].tolist() == ["", ""]

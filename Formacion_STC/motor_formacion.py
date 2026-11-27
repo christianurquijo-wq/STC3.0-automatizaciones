@@ -59,7 +59,6 @@ CALCULADAS = [c for c in COLUMNAS if c not in MANUALES]
 # Listas que estaban escritas dentro de las fórmulas (para cambiarlas, editar aquí).
 INSUBSANABLES = {"1025530422", "1000595525", "1028820625", "1031178978", "1007101659", "1025324147", "1027524945"}
 FECHA_FIN_FIJA = {"1024460134": "04/11/2026", "1000786870": "04/11/2026", "1028480350": "04/11/2026"}
-MESES_PAQUETE = [("julio", "1"), ("agosto", "2"), ("septiembre", "3"), ("octubre", "3.1"), ("noviembre", "4")]
 
 
 # ------------------------------------------------------------------ utilidades
@@ -474,25 +473,12 @@ def calcular(base: pd.DataFrame, f: dict[str, pd.DataFrame], hoy: pd.Timestamp,
     out["AS"] = serie(((6 if aa == 1 else 0) if d else "") for d, aa in zip(doc, out["AA"]))
     out["AT"] = serie((round(ar + as_, 3) if d else "") for d, ar, as_ in zip(doc, out["AR"], out["AS"]))
 
-    # AU · paquete de pago, desde el mes de entrega del SG (col. BI): julio → 1, agosto → 2, septiembre → 3,
-    # octubre → 3.1, noviembre → 4 (las mismas equivalencias de la fórmula)
-    mes_sg = primero(ks, col(sg, "BI"))
-    nombres_mes = {7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"}
-
-    def paquete_pago(d):
-        v = mes_sg.get(d, "") if d else ""
-        if vacio(v):
-            return ""
-        t = fecha(v)
-        x = nombres_mes.get(t.month, "") if t is not None else str(v).lower()
-        if not x or "ruta" in x:
-            return ""
-        for mes, num in MESES_PAQUETE:
-            if mes in x:
-                return f"PAQUETE {num}"
-        return f"PAQUETE {v}"
-
-    out["AU"] = serie(paquete_pago(d) for d in doc)
+    # AU · paquete de pago = «Hito» del Seguimiento General (col. BH): «Pago 1», «Pago 2.1»… cuando la SDDE ya
+    # aprobó a la persona en una entrega; «En ruta» si va en el proceso sin aprobación; vacío si es baja o no está en
+    # el SG. CAMBIO (nov-2026): antes se estimaba por el mes de entrega (col. BI: julio → PAQUETE 1, agosto → 2…).
+    # El cron corre formación antes que el SG, así que toma el Hito de la reconstrucción anterior.
+    hito_sg = primero(ks, col(sg, "BH"))
+    out["AU"] = serie(("" if vacio(hito_sg.get(d)) else str(hito_sg.get(d)).strip()) if d else "" for d in doc)
 
     # AV · evidencia de paquete (Hoja 31, col. I)
     h31 = pd.Series([k for k in llaves(f.get("Hoja 31"), "I") if k]).value_counts().to_dict()

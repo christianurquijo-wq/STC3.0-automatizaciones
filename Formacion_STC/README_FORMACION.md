@@ -33,7 +33,7 @@ Corre encadenado a `Seguimiento_general/reconstruir_seguimiento_real.py` (L-V 6 
 | BF | No cruzaba cédulas guardadas como texto en la Matriz Documental | Cruza texto y número |
 | E | «NO TIENE» en el segundo apellido se pegaba al nombre | Se omite |
 
-Listas que estaban dentro de fórmulas (BE insubsanables, Y fechas fijas, AU meses de paquete): constantes al inicio de
+Listas que estaban dentro de fórmulas (BE insubsanables, Y fechas fijas, AU ya no: ver abajo): constantes al inicio de
 `motor_formacion.py`.
 
 ## Uso manual
@@ -46,3 +46,8 @@ python Formacion_STC/actualizar_formacion.py                 # real
 python Formacion_STC/actualizar_formacion.py --pestanas si   # fuerza reescribir pestañas fuente
 python -m pytest Formacion_STC                               # pruebas
 ```
+
+**AU «PAQUETE DE PAGO»** (nov-2026): es el «Hito» del Seguimiento General (col. BH): «Pago 1», «Pago 2.1»… si la SDDE
+ya aprobó a la persona en una entrega, «En ruta» si va en el proceso, vacío si es baja o no está en el SG. Antes se
+estimaba por el mes de entrega (julio → PAQUETE 1, agosto → 2…). Como el cron corre formación antes que el SG, AU
+toma el Hito de la reconstrucción anterior (un pago nuevo aparece en formación en la corrida siguiente).
