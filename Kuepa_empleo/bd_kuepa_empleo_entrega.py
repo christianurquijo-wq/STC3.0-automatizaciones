@@ -1,3 +1,15 @@
+"""
+Base de entrega «AAAAMMDD Anexo No. 4 Base exportable plataforma de empleo Kuepa.csv».
+
+Lee los últimos PROFILE / OFERTAS / LOCALIDADES de la carpeta CARPETA_KUEPA_EMPLEO, arma la base y:
+  1. guarda el CSV junto al script (como siempre), y
+  2. lo sube a la carpeta de entregas en la unidad compartida (CARPETA_ENTREGA_KUEPA_EMPLEO; por defecto la de
+     Socios Talento Capital). Si ese día ya existe un archivo con el mismo nombre, lo reemplaza (no duplica).
+
+Se puede correr desde VS Code o desde el Panel de Operaciones (GitHub Actions: workflow ops_run_script.yml).
+En el panel no hay navegador: Drive se usa con la cuenta de servicio (applied-plexus), que debe tener acceso de
+«Colaborador» o superior en la unidad compartida de destino y acceso de lectura a la carpeta de insumos.
+"""
 from dotenv import load_dotenv, find_dotenv
 import pandas as pd
 import os
@@ -7,6 +19,9 @@ from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 load_dotenv(find_dotenv(), override=True)
 
@@ -40,26 +55,76 @@ scope = ["https://www.googleapis.com/auth/spreadsheets",
          "https://www.googleapis.com/auth/drive"]
 
 Credenciales = ServiceAccountCredentials.from_json_keyfile_name(json_plexus, scope)
-client = gspread.authorize(Credenciales)    
-drive = loggin_drive()
-carpeta_kuepa_empleo = os.getenv("CARPETA_KUEPA_EMPLEO")
-query_drive = f"'{carpeta_kuepa_empleo}' in parents and trashed=false"
-archivos = drive.ListFile({'q': query_drive}).GetList()
+client = gspread.authorize(Credenciales)
 
-metadata_total = []
-for archivo in archivos:
-    nombre_archivo = archivo['title']
-    id_archivo = archivo['id']
-    hora_archivo = archivo['createdDate']
-    hora_actualizacion = archivo['modifiedDate']
-    metadata = {"Nombre": nombre_archivo, "ID": id_archivo,  "Hora": hora_archivo,  "Hora_Actualización": hora_actualizacion}
-    metadata_total.append(metadata)
+# Drive con la cuenta de servicio (sirve igual en tu PC y en el panel, sin token de navegador que se venza)
+drive_sa = build("drive", "v3", cache_discovery=False,
+                 credentials=service_account.Credentials.from_service_account_file(json_plexus, scopes=scope))
+carpeta_kuepa_empleo = os.getenv("CARPETA_KUEPA_EMPLEO")
+# Carpeta de entregas en la unidad compartida (se puede cambiar en el .env sin tocar el código)
+CARPETA_ENTREGA = os.getenv("CARPETA_ENTREGA_KUEPA_EMPLEO") or "1mmz2mFejTjx0KQqukPbG09sHBB42-r6b"
+
+
+def listar_insumos(carpeta):
+    """Archivos de la carpeta de insumos. Primero con la cuenta de servicio; si no ve nada (la carpeta no está
+    compartida con ella), con tu acceso de Drive de siempre (credentials_module.json)."""
+    archivos, pagina = [], None
+    try:
+        while True:
+            r = drive_sa.files().list(q=f"'{carpeta}' in parents and trashed=false", pageToken=pagina,
+                                      fields="nextPageToken, files(id, name, createdTime, modifiedTime)",
+                                      supportsAllDrives=True, includeItemsFromAllDrives=True, pageSize=200).execute()
+            archivos += [{"Nombre": f["name"], "ID": f["id"], "Hora": f["createdTime"],
+                          "Hora_Actualización": f["modifiedTime"]} for f in r.get("files", [])]
+            pagina = r.get("nextPageToken")
+            if not pagina:
+                break
+    except Exception as e:
+        print(f"Aviso: la cuenta de servicio no pudo listar la carpeta de insumos ({type(e).__name__}).")
+    if archivos:
+        return archivos
+    print("Listando la carpeta de insumos con credentials_module.json…")
+    drive = loggin_drive()
+    return [{"Nombre": a['title'], "ID": a['id'], "Hora": a['createdDate'], "Hora_Actualización": a['modifiedDate']}
+            for a in drive.ListFile({'q': f"'{carpeta}' in parents and trashed=false"}).GetList()]
+
+
+def subir_a_drive(ruta, carpeta):
+    """Sube el CSV a la carpeta (unidad compartida). Si ya hay uno con el mismo nombre, lo reemplaza. Devuelve el enlace."""
+    nombre = os.path.basename(ruta)
+    nombre_q = nombre.replace("\\", "\\\\").replace("'", "\\'")
+    existentes = drive_sa.files().list(q=f"'{carpeta}' in parents and name = '{nombre_q}' and trashed=false",
+                                       fields="files(id)", supportsAllDrives=True,
+                                       includeItemsFromAllDrives=True).execute().get("files", [])
+    media = MediaFileUpload(ruta, mimetype="text/csv", resumable=True)
+    if existentes:
+        f = drive_sa.files().update(fileId=existentes[0]["id"], media_body=media, fields="id, webViewLink",
+                                    supportsAllDrives=True).execute()
+    else:
+        f = drive_sa.files().create(body={"name": nombre, "parents": [carpeta]}, media_body=media,
+                                    fields="id, webViewLink", supportsAllDrives=True).execute()
+    return f.get("webViewLink", f"https://drive.google.com/file/d/{f['id']}/view")
+
+
+metadata_total = listar_insumos(carpeta_kuepa_empleo)
+if not metadata_total:
+    raise SystemExit("No encontré archivos en la carpeta de insumos (CARPETA_KUEPA_EMPLEO). Revisa el .env y que "
+                     "la carpeta esté compartida con la cuenta de servicio.")
 
 metadata_df = pd.DataFrame(metadata_total)
 metadata_df['Categoría'] = metadata_df['Nombre'].str.extract(r'(PROFILE|OFERTAS|LOCALIDADES)')
 metadata_df['Hora'] = pd.to_datetime(metadata_df['Hora'])
 metadata_df = metadata_df.sort_values(by='Hora', ascending=False).copy()
 metadata_df = metadata_df.drop_duplicates(subset=['Categoría'], keep='first')
+
+metadata_df = metadata_df.dropna(subset=['Categoría'])  # otros archivos de la carpeta no cuentan
+faltan = {"PROFILE", "OFERTAS", "LOCALIDADES"} - set(metadata_df['Categoría'].dropna())
+if faltan:
+    raise SystemExit(f"Faltan insumos en la carpeta CARPETA_KUEPA_EMPLEO: {', '.join(sorted(faltan))}. "
+                     "Sube los archivos del día (sus nombres deben contener PROFILE, OFERTAS y LOCALIDADES).")
+print("Insumos usados (los más recientes de cada tipo):")
+for _, f in metadata_df.iterrows():
+    print(f"  - {f['Categoría']}: {f['Nombre']} (creado {f['Hora']:%Y-%m-%d %H:%M} UTC)")
 
 for indice, fila in metadata_df.iterrows():
     id = fila['ID']
@@ -138,4 +203,9 @@ fecha_hoy = datetime.today()
 fecha_formateada = fecha_hoy.strftime('%Y%m%d')
 nombre_archivo = f"{fecha_formateada} Anexo No. 4 Base exportable plataforma de empleo Kuepa.csv"
 
-df.to_csv(nombre_archivo, index=False)
+ruta_csv = os.path.join(ruta_base, nombre_archivo)
+df.to_csv(ruta_csv, index=False)
+print(f"CSV generado: {nombre_archivo} ({len(df)} registros).")
+
+enlace = subir_a_drive(ruta_csv, CARPETA_ENTREGA)
+print(f"Subido a Drive: {enlace}")
