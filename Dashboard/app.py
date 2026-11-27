@@ -153,6 +153,10 @@ except Exception as e:
         st.cache_data.clear()
         st.rerun()
 
+# Botón flotante «Asistente de datos» (consultas puntuales con cifra y CSV; ver asistente_stc.py y consultas_stc.py)
+from asistente_stc import boton_flotante as _asistente_datos
+_asistente_datos()
+
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🔍 Consulta por CC", "📄 Compilador FCS", "⏰ Alertas por tiempos", "📊 Overview",
     "🌐 Dashboard Proyecto", "📋 Evidencias SDDE", "🔎 Auditoría de calidad", "🎯 Seguimiento individual",
