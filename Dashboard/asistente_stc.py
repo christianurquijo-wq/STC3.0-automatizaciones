@@ -5,6 +5,8 @@ Asistente de datos del dashboard STC 3.0 (nov-2026): botón flotante «Asistente
 Cada respuesta trae la cifra, una vista previa y el CSV (con documento, nombre, teléfono y correo). La lógica (tabla
 por persona, filtros, tablas, CSV) está en consultas_stc.py; aquí solo la interfaz. Sin IA.
 Vista previa local con datos sintéticos: STC_ASISTENTE_DEMO=1 streamlit run app.py
+Compatible con Streamlit 1.38 (la versión fijada en Dashboard/requirements.txt): sin pills, segmented_control ni
+iconos en botones, que llegaron en versiones posteriores.
 """
 from __future__ import annotations
 
@@ -18,19 +20,27 @@ import consultas_stc as Q
 import gestion as G
 
 VISTA_PREVIA = 300
-CSS = """<style>
-.st-key-asistente_stc_fab { position: fixed; right: 24px; bottom: 24px; z-index: 999990; width: auto !important; }
-.st-key-asistente_stc_fab button { border-radius: 999px; padding: .65rem 1.25rem; font-weight: 600;
-    background: #FD531E; border-color: #FD531E; color: #fff; box-shadow: 0 8px 22px rgba(0,0,0,.28); }
-.st-key-asistente_stc_fab button:hover { background: #E0440F; border-color: #E0440F; color: #fff; }
-@media (max-width: 640px) { .st-key-asistente_stc_fab { right: 12px; bottom: 12px; } }
-</style>"""
+# El botón se fija abajo a la derecha. Streamlit 1.38 no pone la clase .st-key-<key> en los widgets: se ubica como el
+# elemento que sigue al ancla #asistente-stc-ancla (y en versiones nuevas también por .st-key-asistente_stc_fab).
+_FAB = (".st-key-asistente_stc_fab, "
+        "div.element-container:has(#asistente-stc-ancla) + div.element-container, "
+        "div[data-testid='stElementContainer']:has(#asistente-stc-ancla) + div[data-testid='stElementContainer']")
+CSS = f"""<style>
+{_FAB} {{ position: fixed; right: 24px; bottom: 24px; left: auto !important; z-index: 999990;
+    width: max-content !important; }}
+div.element-container:has(#asistente-stc-ancla),
+div[data-testid='stElementContainer']:has(#asistente-stc-ancla) {{ display: none; }}
+{_FAB.replace(", ", " div, ")} div {{ width: auto !important; }}
+{_FAB.replace(", ", " button, ")} button {{ border-radius: 999px; padding: .65rem 1.25rem; font-weight: 600;
+    background: #FD531E; border-color: #FD531E; color: #fff; box-shadow: 0 8px 22px rgba(0,0,0,.28); }}
+@media (max-width: 640px) {{ {_FAB} {{ right: 12px; bottom: 12px; }} }}
+</style><div id="asistente-stc-ancla"></div>"""
 
 
 def boton_flotante() -> None:
     """Se llama una vez en app.py (arriba de las pestañas): el botón queda fijo abajo a la derecha."""
     st.markdown(CSS, unsafe_allow_html=True)
-    if st.button("Asistente de datos", icon=":material/forum:", key="asistente_stc_fab", type="primary",
+    if st.button("💬 Asistente de datos", key="asistente_stc_fab", type="primary",
                  help="Consultas puntuales con cifra y CSV"):
         dialogo()
 
@@ -73,8 +83,8 @@ def dialogo() -> None:
         return
     for a in avisos:
         st.caption(f":material/info: {a}")
-    modo = st.segmented_control("Modo", ["Consultas frecuentes", "Constructor"], key="asis_stc_modo",
-                                default="Consultas frecuentes", label_visibility="collapsed")
+    modo = st.radio("Modo", ["Consultas frecuentes", "Constructor"], key="asis_stc_modo", horizontal=True,
+                    label_visibility="collapsed")
     if modo == "Constructor":
         _constructor(b, fuentes, hoy)
     else:
@@ -96,7 +106,8 @@ def _conversacion(b: pd.DataFrame, fuentes: dict, hoy: dt.date) -> None:
                     "acotarla con más filtros (paquete, JCO, evento, mes de alta, gestor, programa, fechas…).")
         for grupo in dict.fromkeys(a.grupo for a in Q.ATAJOS):
             k = f"asis_stc_pill_{grupo}"
-            st.pills(grupo, [a.titulo for a in Q.ATAJOS if a.grupo == grupo], key=k, on_change=_elegir, args=(k,))
+            st.radio(f"**{grupo}**", [a.titulo for a in Q.ATAJOS if a.grupo == grupo], index=None, key=k,
+                     horizontal=True, on_change=_elegir, args=(k,))
     clave = titulos.get(st.session_state.get("asis_stc_atajo") or "")
     if not clave:
         return
@@ -115,8 +126,8 @@ def _conversacion(b: pd.DataFrame, fuentes: dict, hoy: dt.date) -> None:
 def _parametro(a: Q.Atajo, b: pd.DataFrame, hoy: dt.date, pfx: str) -> dict:
     p = a.parametro
     if p == "etapa_inscripcion":
-        sel = st.pills("Etapa", ["Orientados SIN INSCRIBIR", "Orientados INSCRITOS"], selection_mode="multi",
-                       default=["Orientados SIN INSCRIBIR", "Orientados INSCRITOS"], key=f"{pfx}_et")
+        sel = st.multiselect("Etapa", ["Orientados SIN INSCRIBIR", "Orientados INSCRITOS"],
+                             default=["Orientados SIN INSCRIBIR", "Orientados INSCRITOS"], key=f"{pfx}_et")
         return {"filtros": Q.Filtros(cat={"etapa_pendiente": sel or ["Orientados SIN INSCRIBIR", "Orientados INSCRITOS"]})}
     if p == "hitos":
         hitos = sorted([h for h in b["hito"].unique() if h], key=G._orden_hito)
@@ -129,8 +140,8 @@ def _parametro(a: Q.Atajo, b: pd.DataFrame, hoy: dt.date, pfx: str) -> dict:
                              key=f"{pfx}_m")
         return {"filtros": Q.Filtros(cat={"momento": sel or momentos})}
     if p == "certificado":
-        op = st.segmented_control("Caso", ["Finalizados sin certificado", "Generados sin subir a STC"],
-                                  default="Finalizados sin certificado", key=f"{pfx}_c") or "Finalizados sin certificado"
+        op = st.radio("Caso", ["Finalizados sin certificado", "Generados sin subir a STC"], horizontal=True,
+                      key=f"{pfx}_c") or "Finalizados sin certificado"
         if op.startswith("Finalizados"):
             return {"filtros": Q.Filtros(cat={"estado_formacion": ["FINALIZADO"], "tiene_certificado": [Q.NO]})}
         return {"filtros": Q.Filtros(cat={"consolidado_cert": ["Generado"]})}
@@ -139,10 +150,10 @@ def _parametro(a: Q.Atajo, b: pd.DataFrame, hoy: dt.date, pfx: str) -> dict:
                             format="DD/MM/YYYY", key=f"{pfx}_d")
         return {"filtros": Q.Filtros(fecha={"f_ult_asistencia": (None, dia - dt.timedelta(days=1), True)})}
     if p == "encuesta":
-        op = st.segmented_control("¿Tiene encuesta?", [Q.NO, Q.SI], default=Q.NO, key=f"{pfx}_e") or Q.NO
+        op = st.radio("¿Tiene encuesta?", [Q.NO, Q.SI], horizontal=True, key=f"{pfx}_e") or Q.NO
         return {"filtros": Q.Filtros(cat={"encuesta": [op]})}
     if p == "semaforo":
-        sel = st.pills("Semáforo", G.SEMAFORO, selection_mode="multi", default=[G.SEMAFORO[0]], key=f"{pfx}_s")
+        sel = st.multiselect("Semáforo", G.SEMAFORO, default=[G.SEMAFORO[0]], key=f"{pfx}_s")
         etapas = ["Sin verificar", "Verificados sin orientar", "Orientados SIN INSCRIBIR", "Orientados INSCRITOS"]
         return {"filtros": Q.Filtros(cat={"semaforo": sel or G.SEMAFORO, "etapa_pendiente": etapas})}
     if p == "actividad":
@@ -208,13 +219,14 @@ def _panel_filtros(b: pd.DataFrame, pfx: str, universo_fijo: str | None = None) 
         sel = cols[i % 3].multiselect(etiqueta, opciones, key=f"{pfx}_{col}", placeholder="Todos")
         if sel:
             f.cat[col] = sel
-    with st.expander("Rangos (asistencia, plataforma, días…)", icon=":material/tune:"):
+    # Streamlit 1.38 no permite un expander dentro de otro («Más filtros»): rangos y fechas se abren con un interruptor
+    if st.toggle("Filtrar por rangos (asistencia, plataforma, días…)", key=f"{pfx}_ver_rangos"):
         cols = st.columns(2)
         for i, (col, etiqueta, lo, hi) in enumerate(Q.FILTROS_RANGO):
             r = cols[i % 2].slider(etiqueta, lo, hi, (lo, hi), step=1.0, key=f"{pfx}_r_{col}")
             if r != (lo, hi):
                 f.rango[col] = r
-    with st.expander("Fechas (alta, verificación, orientación, clases…)", icon=":material/calendar_month:"):
+    if st.toggle("Filtrar por fechas (alta, verificación, orientación, clases…)", key=f"{pfx}_ver_fechas"):
         st.caption("Elige un rango en la fecha que quieras filtrar; deja vacío para no filtrar.")
         cols = st.columns(2)
         for i, (col, etiqueta) in enumerate(Q.FILTROS_FECHA):
@@ -306,10 +318,10 @@ def _registrar(archivo: str, filas: int, detalle: str) -> None:
 
 def _salida(t: pd.DataFrame, nombre: str, hoy: dt.date, detalle: str, clave: str = "") -> None:
     previa = t.head(VISTA_PREVIA)
-    st.dataframe(previa, hide_index=True, width="stretch", height=min(420, 38 + 35 * len(previa)))
+    st.dataframe(previa, hide_index=True, use_container_width=True, height=min(420, 38 + 35 * len(previa)))
     if len(t) > VISTA_PREVIA:
         st.caption(f"Vista previa de {VISTA_PREVIA} filas; el CSV trae las {_n(len(t))}.")
     archivo = f"STC3_{nombre}_{hoy:%Y%m%d}.csv".replace(" ", "_")
-    st.download_button(f"Descargar CSV ({_n(len(t))} filas)", Q.a_csv(Q.para_csv(t)), archivo, "text/csv",
-                       icon=":material/download:", type="primary", key=f"asis_stc_dl_{nombre}_{clave}",
+    st.download_button(f"⬇️ Descargar CSV ({_n(len(t))} filas)", Q.a_csv(Q.para_csv(t)), archivo, "text/csv",
+                       type="primary", key=f"asis_stc_dl_{nombre}_{clave}",
                        on_click=_registrar, args=(archivo, len(t), detalle[:400]))
